@@ -12,6 +12,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      # 仅 CI 兜底：保证 zoneinfo 找得到时区库（配置里的 Asia/Shanghai）。
+      # 运行期本身零第三方依赖，这个包只装在 CI 机器上。
+      - name: 装时区数据（仅 CI 兜底）
+        run: python -m pip install --quiet tzdata
       - name: 参考引擎测试（39 项）
         run: python scripts/test_memory_engine.py
       - name: 上下文预算测试（17 项）

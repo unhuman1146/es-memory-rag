@@ -1,6 +1,6 @@
 # 安装：把 es-memory-rag 装进你的 Agent
 
-[中文](README.md) | 英文速览见下方最后一节
+[中文](README.md) | [English](README.en.md) — 英文速览就在下一段
 
 > **English quick version**
 > 1. Copy the **whole** `es-memory-rag/` directory into your agent's skills

@@ -10,6 +10,7 @@
 主聊天只使用按当前话题主动注入的事实投影，不承担实时整理。
 
 > **给 Agent 用：** 这是一个 Skill 包。把 `es-memory-rag/` 整个目录放进你的 Agent 的 skills 目录即可。
+> 各 Agent 的具体路径、三种常见踩坑与验证方法见 **[INSTALL.md](INSTALL.md)**。
 > 接入已有记忆系统前请先读 [GUIDE.md](GUIDE.md) 第 0 节——**不适用就明确不做**，
 > 别为了用 skill 去重建整个 Agent。
 
@@ -50,12 +51,23 @@ python scripts/test_context_budget.py
 
 需要 Python 3.11+，**零第三方依赖**（仅标准库）。
 
+## 安装
+
+把**整个** `es-memory-rag/` 目录复制进你的 Agent 的 skills 目录（别只复制 `SKILL.md`），
+目录名必须与 `SKILL.md` frontmatter 里的 `name:` 完全一致。装完用「问 Agent 它的
+description」+「在安装目录跑一次测试」两条方式自证。
+
+各 Agent 的具体路径与验证步骤：**[INSTALL.md](INSTALL.md)**。
+
 ## 目录结构
 
 ```
 es-memory-rag/
 ├── SKILL.md          行为规范（先读这份）
 ├── GUIDE.md          施工入口：适用性判据 → 六步施工顺序 → 验收
+├── INSTALL.md        各 Agent 安装路径、常见踩坑、验证与升级
+├── CHANGELOG.md      版本历史
+├── NOTICE.md         第三方声明（本包无第三方代码）
 ├── references/
 │   ├── design.md           规则、公式与状态模型
 │   ├── integration.md      RAG / 独立仓管接线契约与验收门槛
@@ -91,8 +103,22 @@ es-memory-rag/
 
 另外，本包的 56 项测试是**离线单测**：它们证明参考引擎的行为符合规范，**不证明**你的线上 RAG 或凌晨调度已经生效。
 
+## 文档地图
+
+| 文件 | 内容 |
+|---|---|
+| [SKILL.md](SKILL.md) | 行为规范——先读这份 |
+| [GUIDE.md](GUIDE.md) | 什么时候做、六步施工顺序、验收门槛 |
+| [INSTALL.md](INSTALL.md) | 各 Agent 安装路径、常见踩坑、验证与升级 |
+| [references/design.md](references/design.md) | 规则、公式与状态模型 |
+| [references/integration.md](references/integration.md) | RAG / 仓管接线契约与门槛 |
+| [references/emotion.md](references/emotion.md) | 情绪三层 L1 快照 / L2 负荷 / L3 评价 |
+| [references/state-ledger.md](references/state-ledger.md) | 状态层、禁区清单、失效模式 |
+| [references/context-budget.md](references/context-budget.md) | 硬顶 / 软线预算与缓存前缀顺序 |
+| [references/evidence.md](references/evidence.md) | 实测数字与工程默认值的分界 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本历史 |
+| [NOTICE.md](NOTICE.md) | 第三方声明 |
+
 ## 许可
 
-MIT，见 [LICENSE](LICENSE)。
-
-第三方引用见 `NOTICE.md`。
+MIT，见 [LICENSE](LICENSE)。第三方声明见 [NOTICE.md](NOTICE.md)。

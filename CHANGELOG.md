@@ -25,4 +25,4 @@
 |---|---|---|
 | v2 | 情绪三层 | L1 历史快照 / L2 当前负荷 / L3 评价版本；编码增强、解析积分速率调制、`remind` 回充、`appraise` 版本化、`injection_allowed` / `rank_score` |
 | v3 | 运维耐久性 | 无变化不写（apply_plan 四元组未变则不 bump revision）；WAL + busy_timeout 并发；outbox 死信与 `fail` / `retry_dead` / `sweep_acked`；抽签与计划签名两把独立 seed；`--now` 需 `ES_MEMORY_REPLAY=1` |
-| v4 | 状态层与上下文预算 | 新增 `state-ledger.md`（关系台账 / 未闭合线程 / 禁区 / 当前任务，永不压缩不衰减不抽签）；新增 `context-budget.md`（512K 硬顶 / 256K 软线）；新增 `evidence.md`（34 次实测与被推翻的假设）；新增 `context_budget.py` 与 17 项测试 |
+| v4 | 状态层与上下文预算 | 新增 `references/state-ledger.md`（关系台账 / 未闭合线程 / 禁区 / 当前任务，永不压缩不衰减不抽签）；新增 `references/context-budget.md`（512K 硬顶 / 256K 软线）；新增 `references/evidence.md`（34 次实测与被推翻的假设）；新增 `scripts/context_budget.py` 与 17 项测试 |

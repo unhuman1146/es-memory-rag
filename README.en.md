@@ -77,6 +77,9 @@ Requires Python 3.11+, **standard library only** — no third-party dependencies
 es-memory-rag/
 ├── SKILL.md          the behavioural spec — read this first
 ├── GUIDE.md          construction entry point: when to do this, the six steps, acceptance
+├── INSTALL.md        per-agent install paths, common mistakes, verification, upgrade
+├── CHANGELOG.md      version history
+├── NOTICE.md         third-party notice
 ├── references/
 │   ├── design.md           rules, formulas, state machine
 │   ├── integration.md      RAG / overnight-warehouse wiring contract
@@ -135,7 +138,8 @@ as specified. They do **not** prove that your RAG or your 02:00 job is live.
 | [references/evidence.md](references/evidence.md) | Measured numbers vs. engineering defaults |
 | [INSTALL.md](INSTALL.md) | Installing into an agent, verifying, upgrading |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [NOTICE.md](NOTICE.md) | Third-party notice (no third-party code in this package) |
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Third-party notice: [NOTICE.md](NOTICE.md).

@@ -1,5 +1,7 @@
 # ES-Memory RAG 仓管
 
+[中文](README.md) | **[English](README.en.md)**
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.0.0-5b8c7a)](https://github.com/unhuman1146/es-memory-rag/releases)
 [![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-56%20%E9%A1%B9%E5%85%A8%E8%BF%87-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)

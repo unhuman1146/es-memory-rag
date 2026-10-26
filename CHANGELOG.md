@@ -1,5 +1,35 @@
 # 更新说明
 
+## 1.1.0 · 2026-10-26
+
+**新增参考适配器，把 `RAGAdapter` 契约落成可运行代码。**
+
+发布内容：
+
+- `adapters/` —— 参考实现（5 个模块，纯标准库）：
+  - `adapters/embedding.py` —— embedding 客户端：`SiliconFlowEmbedding`（OpenAI 兼容 `/v1/embeddings`）、
+    `OllamaEmbedding`（本地 `/api/embed`，**不需要 key**）、`HashingEmbedding`（离线测试桩）；
+    key 解析顺序为 参数 > `SILICONFLOW_API_KEY` > 仓库外的 `~/.es-memory-rag/config.json`
+  - `adapters/vector_store.py` —— 纯标准库 SQLite 向量库：分块存储、余弦检索、ACL 预过滤
+  - `adapters/rerank.py` —— `SiliconFlowReranker`（bge-reranker-v2-m3）与词法降级替身
+  - `adapters/rag_adapter.py` —— `RAGAdapter` 契约实现（`upsert`/`delete`/`search`/`rerank`/`count`）
+  - `adapters/sync.py` —— outbox 消费者：被新 revision 取代的事件记为 skipped 并确认；真实执行才确认；
+    失败调用 `fail()` 并按 `outbox_max_attempts` 进死信；**没有实际执行绝不确认**
+- `references/adapters.md` —— 接线文档：两种 embedding 后端、凭据处理、契约对应表、
+  同步语义、相关性阈值标定、验证方式
+- `scripts/test_adapter.py` —— **40 项**离线单测（不联网、不用 key，CI 也跑）
+- `scripts/demo_live_rag.py` —— 真机验收脚本（需要 key 与网络，**不在 CI**）
+
+本版同时补上契约里原本漏掉的一条：**先过相关性阈值再排序**（`min_relevance`），
+拦住「权重很高但完全不相关」的记忆被强塞进上下文。阈值按模型标定，文档给了
+bge-m3 + 短中文事实投影的实测值（0.45）并明确要求换模型后重新标定。
+
+**凭据处理**：key 只进 `Authorization` 请求头，不进仓库、不进索引、不进错误信息
+（有专门断言守着）。仓库根目录下的 config.json 已被 .gitignore 排除。
+
+**未改变**：记忆生命周期的数值与语义（λ 表、压缩边界、抽签、回收期、outbox 契约）一个都没改。
+原 56 项测试全部仍然通过，现共 **96 项**（引擎 39 + 预算 17 + 适配器 40）。
+
 ## 1.0.0 · 2026-10-26
 
 **首个公开版本（GitHub 开源）。**

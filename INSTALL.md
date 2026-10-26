@@ -34,14 +34,16 @@ es-memory-rag/
 ├── README.en.md      ← 英文说明
 ├── INSTALL.md        ← 本文件
 ├── CHANGELOG.md
+├── NOTICE.md         ← 第三方声明（本包无第三方代码）
 ├── references/       ← 6 份展开文档
-├── scripts/          ← 参考引擎 + 56 项测试
+├── scripts/          ← 参考引擎 + 96 项测试 + 真机验收脚本
+├── adapters/         ← 参考适配器（embedding / 向量库 / rerank / outbox 消费）
 ├── assets/           ← 配置样例、systemd 模板、事件样例
 └── agents/           ← openai.yaml
 ```
 
 > 最少可用的组合是 `SKILL.md` + `references/` + `scripts/`；
-> 上面是**完整**复制清单（推荐）。
+> 上面是**完整**复制清单（推荐）。只做记忆库、不接 RAG 时可以不带 `adapters/`。
 
 ### 2. 目录名必须等于 frontmatter 里的 `name`
 
@@ -71,7 +73,7 @@ es-memory-rag/            ← 目录名
 | **Codex CLI** | `~/.codex/skills/<skill-name>/` | 本机实测；`~/.codex/skills/.system/` 是内置技能，别往里放 |
 | **通用 skills 落点** | `~/.agents/skills/<skill-name>/` | 本机实测存在（`ui-craft` 在这） |
 | **工具仓** | `~/.hub/skills/<skill-name>/` | 本机实测存在 |
-| **MiniMax Code（Mavis）** | `<dataDir>/agents/<agent>/skills/<skill-name>/` | 本机实测；`dataDir` = `D:\minimax\.minimax\.minimax` |
+| **MiniMax Code（Mavis）** | `<dataDir>/agents/<agent>/skills/<skill-name>/` | 本机实测；`<dataDir>` 是 Mavis 的数据目录（随安装而变，**不要硬编码**） |
 
 > Windows 上 `~` = `C:\Users\<用户名>`。
 > MiniMax Code 的 dataDir 位置随安装而变，用 `mavis` 命令或看会话工作区同级目录确定，
@@ -118,10 +120,14 @@ es-memory-rag/            ← 目录名
 cd <你的 skills 目录>/es-memory-rag
 python scripts/test_memory_engine.py     # 应输出 Ran 39 tests ... OK
 python scripts/test_context_budget.py   # 应输出 Ran 17 tests ... OK
+python scripts/test_adapter.py          # 应输出 Ran 40 tests ... OK
 ```
 
-这一步能同时验证三件事：目录结构完整、Python ≥ 3.11、参考引擎真能跑。
+这一步能同时验证四件事：目录结构完整、Python ≥ 3.11、参考引擎真能跑、参考适配器真能跑。
 跑不过就是没装对，不是"环境问题"。
+
+> `scripts/demo_live_rag.py` 是**真机**验收（要 embedding 凭据和网络），
+> 装技能时不必跑；想看 RAG 真接通的样貌再跑它。
 
 ---
 
@@ -129,12 +135,20 @@ python scripts/test_context_budget.py   # 应输出 Ran 17 tests ... OK
 
 1. **先备份**旧版本（整个目录复制到别处，例如
    `~/.codex/skills/_backup/es-memory-rag-<日期>/`）
-2. 覆盖：只换 `SKILL.md` `references/` `scripts/` `assets/` `agents/`
-   （`CHANGELOG.md` `README.md` `README.en.md` `INSTALL.md` `LICENSE` 是新增或
+2. 覆盖：只换 `SKILL.md` `references/` `scripts/` `adapters/` `assets/` `agents/`
+   （`CHANGELOG.md` `README.md` `README.en.md` `INSTALL.md` `LICENSE` `NOTICE.md` 是新增或
    更新的，一并放上）
 3. **回读校验**：确认新 `SKILL.md` 的 frontmatter 有 `version:` 行，且
    `references/` 下 6 份文档都在
-4. 跑上面**方法 B** 的两条测试
+4. 跑上面**方法 B** 的三条测试
+
+### 从 1.0.0 升到 1.1.0 的差异
+
+- 新增 `adapters/` —— 参考适配器（embedding / 向量库 / rerank / 契约 / outbox 消费）
+- 新增 `references/adapters.md` —— 接线文档
+- 新增 `scripts/test_adapter.py`（40 项）与 `scripts/demo_live_rag.py`（真机验收）
+- 补上契约里原本漏掉的一条：先过相关性阈值再排序
+- **记忆生命周期的数值与语义一个都没改**
 
 ### 从 v1 升到 1.0.0 的差异
 

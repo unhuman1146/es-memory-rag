@@ -64,9 +64,10 @@ python scripts/memory_engine.py --db demo.db maintain --apply
 # pending jobs for the RAG adapter
 python scripts/memory_engine.py --db demo.db outbox
 
-# tests: 56 in total
+# tests: 96 in total
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
+python scripts/test_adapter.py
 ```
 
 Requires Python 3.11+, **standard library only** — no third-party dependencies.
@@ -83,6 +84,7 @@ es-memory-rag/
 ├── references/
 │   ├── design.md           rules, formulas, state machine
 │   ├── integration.md      RAG / overnight-warehouse wiring contract
+│   ├── adapters.md         reference adapter wiring (embedding backends, credentials, thresholds)
 │   ├── emotion.md          the three emotion layers
 │   ├── state-ledger.md     the state layer and its failure modes
 │   ├── context-budget.md   512K hard ceiling / 256K soft line
@@ -90,7 +92,9 @@ es-memory-rag/
 ├── scripts/
 │   ├── memory_engine.py    reference engine (SQLite transactions, outbox, stable lottery, CAS)
 │   ├── context_budget.py   context assembly and budgeting
-│   └── test_*.py           56 tests
+│   ├── demo_live_rag.py    live acceptance script (needs a key, not in CI)
+│   └── test_*.py           96 tests
+├── adapters/        reference adapter (embedding / vector store / rerank / contract / outbox)
 └── assets/
     ├── config.example.json
     ├── es-memory-warehouse.service / .timer   systemd wiring templates
@@ -121,8 +125,10 @@ cite a default as a conclusion**:
 - **Uncalibrated engineering defaults**: the six λ rates, the 60/30 compression
   thresholds, the 20 % daily deletion probability, and every emotion parameter.
 
-The 56 tests are **offline unit tests**. They prove the reference engine behaves
-as specified. They do **not** prove that your RAG or your 02:00 job is live.
+The 96 tests are **offline unit tests**. They prove the reference engine and the
+reference adapter behave as specified. They do **not** prove that your RAG or
+your 02:00 job is live. `python scripts/demo_live_rag.py` runs the real thing
+(needs an embedding credential and network access; it is not part of CI).
 
 ## Documentation map
 
@@ -132,6 +138,7 @@ as specified. They do **not** prove that your RAG or your 02:00 job is live.
 | [GUIDE.md](GUIDE.md) | When to do this, the six construction steps, acceptance gates |
 | [references/design.md](references/design.md) | Rules, formulas, state machine |
 | [references/integration.md](references/integration.md) | RAG / warehouse wiring contract and gates |
+| [references/adapters.md](references/adapters.md) | Reference adapter: embedding backends, credentials, threshold calibration |
 | [references/emotion.md](references/emotion.md) | L1 snapshot / L2 load / L3 appraisal |
 | [references/state-ledger.md](references/state-ledger.md) | The state layer, veto list, failure modes |
 | [references/context-budget.md](references/context-budget.md) | HARD/SOFT budget lines, cache prefix order |

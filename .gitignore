@@ -17,6 +17,11 @@ venv/
 # 环境与密钥
 .env
 .env.*
+# 任何本地凭据配置都不许进仓库（真实凭据放在仓库外的 ~/.es-memory-rag/config.json）
+config.json
+secrets.json
+*.key
+*.pem
 
 # 编辑器与系统
 .vscode/

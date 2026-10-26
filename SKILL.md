@@ -1,6 +1,6 @@
 ---
 name: es-memory-rag
-version: 1.0.0
+version: 1.1.0
 description: 为 Agent 构建或改造 ES-Memory/ESDM 驱动的 RAG 记忆生命周期，包含独立凌晨仓管、动态权重、事实分层压缩、低权重随机遗忘、真人提醒强化，以及历史快照/当前负荷/评价版本三层情绪记忆。适用于实现、迁移或审计这套方案；不因普通知识查询就重建记忆系统。
 ---
 
@@ -56,6 +56,8 @@ python scripts/test_memory_engine.py
 
 按 integration.md 实现适配器：消费durable outbox，真实upsert/delete收到确认后才能ack；检索在向量查询前和注入前核对权限，过滤旧revision/墓碑。只更新权重时复用内容hash相同的embedding。缺reranker或索引不可用必须显式降级，不假装接通。
 
+`adapters/` 是这套契约的一份**参考实现**（SiliconFlow 或本地 Ollama 的 embedding、纯标准库 SQLite 向量库、bge-reranker、outbox 消费者），可直接用，也可整包替换成自己的实现；凭据只从环境变量或仓库外的 `~/.es-memory-rag/config.json` 读取，不进仓库、不进日志。接线细节、相关性阈值标定与验收脚本见 [references/adapters.md](references/adapters.md)。
+
 仓管可复用获准API Key和模型，但独立上下文、队列和并发；原始内容不因此获得新的外发授权。让模型判断记忆价值、事实等价、核心细节和合并建议；数值衰减、随机抽签、权限、CAS及删除由代码执行。
 
 assets中的systemd service/timer是接线模板，替换绝对路径和运行用户，并检查实际时区/日历解释与已有任务是否重复。真实RAG outbox消费者和语义Curator需要宿主Agent实现；service模板只运行确定性夜间维护。
@@ -74,6 +76,22 @@ assets中的systemd service/timer是接线模板，替换绝对路径和运行�
 交付时列明公式版本和自定义参数、已验证行为、真实RAG/调度状态、未完成适配项。不要将离线单测、演示库或纯文档交付报告成阿零线上记忆已经改造完成。
 
 ## 版本
+
+**1.1.0 · 2026-10-26 · 新增参考适配器 `adapters/`。**
+
+- 新增 [references/adapters.md](references/adapters.md) 与 `adapters/`（5 个模块）：把
+  `RAGAdapter` 契约落成可运行代码——embedding 客户端（SiliconFlow / 本地 Ollama / 离线测试桩）、
+  纯标准库 SQLite 向量库、reranker（SiliconFlow bge-reranker / 词法降级替身）、契约实现、
+  outbox 消费者。
+- 新增 `scripts/test_adapter.py`：**40 项**离线单测（不联网、不用 key，CI 也跑）。
+- 新增 `scripts/demo_live_rag.py`：真机验收脚本（需要 key 与网络，**不在 CI**），
+  走同义改写命中、高权重无关记忆不被注入、reranker 真实响应、强制删除后
+  `count(memory_id)=0` 这几条单测覆盖不到的门槛。
+- 补上契约里原本漏掉的一条：**先过相关性阈值再排序**（`min_relevance`），
+  拦住「权重很高但完全不相关」的记忆被强塞进上下文。
+- **凭据处理**：key 只从环境变量或仓库外的 `~/.es-memory-rag/config.json` 读取，
+  只进 `Authorization` 头，不进仓库、不进索引、不进错误信息（有专门断言守着）。
+- **未改变**：记忆生命周期的数值与语义（λ、压缩边界、抽签、回收、outbox 契约）一个都没改。
 
 **1.0.0 · 2026-10-26 · 首个公开版本。**
 

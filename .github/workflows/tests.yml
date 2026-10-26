@@ -20,3 +20,6 @@ jobs:
         run: python scripts/test_memory_engine.py
       - name: 上下文预算测试（17 项）
         run: python scripts/test_context_budget.py
+      - name: 参考适配器测试（40 项）
+        run: python scripts/test_adapter.py
+      # scripts/demo_live_rag.py 需要 embedding 凭据与网络访问，不在 CI 里跑。

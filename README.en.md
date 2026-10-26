@@ -39,6 +39,11 @@ the **lifecycle**:
   out** ("14 more related records not loaded; fetch them if needed").
 - Decay, the deletion lottery, permissions, CAS and deletion are executed by
   **code**. The model only judges value and fact equivalence.
+- Want to **forget more slowly**? The "please forget me a little more slowly"
+  mode ships two config presets (slower decay / original text kept forever).
+  It changes **storage**, not **retrieval**: a vector store that still holds a
+  record does not put it in front of the model. "Never forget" really means
+  "as long as it is retrieved, it is still there".
 
 ## Install
 
@@ -64,11 +69,16 @@ python scripts/memory_engine.py --db demo.db maintain --apply
 # pending jobs for the RAG adapter
 python scripts/memory_engine.py --db demo.db outbox
 
-# tests: 135 in total
+# the "please forget me a little more slowly" presets (standard / extreme)
+python scripts/memory_engine.py presets
+python scripts/memory_engine.py --db demo.db --preset 请你慢一点遗忘我 init
+
+# tests: 167 in total
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
 python scripts/test_adapter.py
 python scripts/test_chat_path.py
+python scripts/test_slow_forget.py
 ```
 
 Requires Python 3.11+, **standard library only** — no third-party dependencies.
@@ -86,6 +96,7 @@ es-memory-rag/
 │   ├── design.md           rules, formulas, state machine
 │   ├── integration.md      RAG / overnight-warehouse wiring contract
 │   ├── adapters.md         reference adapter wiring (embedding backends, credentials, thresholds)
+│   ├── slow-forget.md      the "forget more slowly" presets, measured data, boundaries
 │   ├── emotion.md          the three emotion layers
 │   ├── state-ledger.md     the state layer and its failure modes
 │   ├── context-budget.md   512K hard ceiling / 256K soft line
@@ -93,12 +104,15 @@ es-memory-rag/
 ├── scripts/
 │   ├── memory_engine.py    reference engine (SQLite transactions, outbox, stable lottery, CAS)
 │   ├── context_budget.py   context assembly and budgeting
+│   ├── presets.py          preset registry and overlay merging
 │   ├── demo_live_rag.py    live acceptance script (needs a key, not in CI)
 │   ├── demo_live_injection.py  live acceptance of the injection path (needs a key, not in CI)
-│   └── test_*.py           135 tests
+│   ├── demo_slow_forget.py threshold calibration for the slow-forget presets (needs a key, not in CI)
+│   └── test_*.py           167 tests
 ├── adapters/        reference adapter (embedding / vector store / rerank / contract / injection path / outbox)
 └── assets/
     ├── config.example.json
+    ├── presets/            the slow-forget presets (slow-forget.json / evergreen.json)
     ├── es-memory-warehouse.service / .timer   systemd wiring templates
     └── example-event.json / example-emotion-event.json
 ```
@@ -127,12 +141,14 @@ cite a default as a conclusion**:
 - **Uncalibrated engineering defaults**: the six λ rates, the 60/30 compression
   thresholds, the 20 % daily deletion probability, and every emotion parameter.
 
-The 135 tests are **offline unit tests**. They prove the reference engine, the
-reference adapter and the proactive injection path behave as specified. They do
-**not** prove that your RAG or your 02:00 job is live.
-`python scripts/demo_live_rag.py` (retrieval) and
-`python scripts/demo_live_injection.py` (injection) run the real thing — both need
-an embedding credential and network access, and neither is part of CI.
+The 167 tests are **offline unit tests**. They prove the reference engine, the
+reference adapter, the proactive injection path and the slow-forget presets
+behave as specified. They do **not** prove that your RAG or your 02:00 job is
+live. `python scripts/demo_live_rag.py` (retrieval),
+`python scripts/demo_live_injection.py` (injection) and
+`python scripts/demo_slow_forget.py` (threshold calibration for the slow-forget
+presets) run the real thing — all three need an embedding credential and network
+access, and none of them is part of CI.
 
 ## Documentation map
 
@@ -143,6 +159,7 @@ an embedding credential and network access, and neither is part of CI.
 | [references/design.md](references/design.md) | Rules, formulas, state machine |
 | [references/integration.md](references/integration.md) | RAG / warehouse wiring contract and gates |
 | [references/adapters.md](references/adapters.md) | Reference adapter: embedding backends, credentials, threshold calibration |
+| [references/slow-forget.md](references/slow-forget.md) | The "forget more slowly" presets: two levels, measured data, real costs |
 | [references/emotion.md](references/emotion.md) | L1 snapshot / L2 load / L3 appraisal |
 | [references/state-ledger.md](references/state-ledger.md) | The state layer, veto list, failure modes |
 | [references/context-budget.md](references/context-budget.md) | HARD/SOFT budget lines, cache prefix order |

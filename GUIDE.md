@@ -2,7 +2,7 @@
 
 > 这是入口文件。一个没有上下文的执行者（人或 agent）读完这一份，按顺序做完六步，就应当得到一套能跑、能自证、能交接的记忆系统。
 >
-> 其他文档是这一份的展开：`references/design.md`（公式与状态机）、`references/integration.md`（接线契约）、`references/state-ledger.md`（状态层四件套，陪伴型必读）、`references/context-budget.md`（总预算两条线）、`references/emotion.md`（情绪三层）、`references/evidence.md`（实测数字与未验证边界）、`scripts/memory_engine.py` 与 `scripts/context_budget.py`（参考实现，可对照行为）。
+> 其他文档是这一份的展开：`references/design.md`（公式与状态机）、`references/integration.md`（接线契约）、`references/state-ledger.md`（状态层四件套，陪伴型必读）、`references/context-budget.md`（总预算两条线）、`references/emotion.md`（情绪三层）、`references/slow-forget.md`（「请你慢一点遗忘我」慢遗忘预设）、`references/evidence.md`（实测数字与未验证边界）、`scripts/memory_engine.py` 与 `scripts/context_budget.py`（参考实现，可对照行为）。
 
 ## 0. 先判断该不该做
 
@@ -136,6 +136,11 @@ eng.rank_score(relevance, weight, mood_similarity=None)      # 不传第三个�
 标定好的阈值会失效、权重项会开始主导排序）。人物信息应当用在权限过滤和排序加权上，
 详见 [references/adapters.md](references/adapters.md)。
 
+开了「请你慢一点遗忘我」预设之后**必须重新标定阈值**：该模式把投影从"压缩后的事实"
+换成"保留原文"，嵌入的文本变了，相关性数值的分布就变了。实测两种形态的阈值不一样
+（事实投影 0.51，全文投影 0.53），拿错会把真正命中的记忆挡在外面。
+标定方法见 [references/slow-forget.md](references/slow-forget.md)。
+
 **此时不要**：为了"不漏"而放大 `top_k` 或预算。注入预算每轮都在花，长任务里它是净成本。
 
 ### S5 语义仓管：模型判断价值，代码执行数值
@@ -242,9 +247,16 @@ CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- lottery_seed /
 | `top_k` / `context_token_budget` | 取模型窗口的 10%–15%，再除以单条投影平均长度。示例：8k 窗口 → 800–1200 tokens → `top_k=6` |
 | `relevance_weight / memory_weight` | 相关性必须主导。0.8/0.2 是合理起点；若你把权重调到 0.5 以上，等于让“旧”压过“对” |
 | `dedup_seconds`（120） | 由桥接层重放窗口决定，不要超过 300，否则会误杀真人复述 |
+| `min_relevance` | **按语料标定，别照抄**。做法：拿一批"该命中的"和"明确无关的"查询各跑一遍，取「命中最低分」与「无关最高分」之间那条线，并留出余量。换模型、换语言、换投影形态（压缩 ↔ 原文）后**必须重标** |
 | 情绪 `encoding_boost` / `rate_gain` | **无标定方法**。只能在 `[0, 0.8]` 与 `[0, 1.5]` 内取值，且编码增强不得越过 89 |
 
 任何自行调整都必须记录：改了什么、依据是什么、重跑了哪条测试。
+
+**想让记忆忘得慢一点**：不必改这些参数，`assets/presets/` 里有现成的
+「请你慢一点遗忘我」两档预设（`--preset slow-forget` / `--preset evergreen`），
+默认配置一个字节都不用改。注意它改的是**存储层**，不是**检索层** ——
+向量库存得下不等于模型看得见，「永远不遗忘」的真实含义是「只要它被召回，它就还在」。
+详见 [references/slow-forget.md](references/slow-forget.md)。
 
 ## 5. 症状 → 病因
 

@@ -18,6 +18,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+try:  # the package is used both as scripts/ on sys.path and as an import
+    from presets import apply_preset, list_presets, resolve_preset, title
+except ImportError:  # pragma: no cover
+    from scripts.presets import apply_preset, list_presets, resolve_preset, title
+
 # --- UTF-8 stdout/stderr (Windows) ---
 # On Windows the default stdout encoding is the locale code page (cp936/GBK),
 # so any consumer decoding this CLI's output as UTF-8 raises UnicodeDecodeError
@@ -46,8 +51,15 @@ EMOTION_DEFAULTS = {
 }
 
 
-def load_config(path=None):
+def load_config(path=None, preset=None):
+    """Load the config, optionally with a named preset overlay applied.
+
+    The overlay is merged *before* validation, so every threshold rule below
+    is checked against the config that will actually be used.
+    """
     cfg = json.loads(Path(path or DEFAULT_CONFIG).read_text(encoding='utf-8'))
+    if preset:
+        cfg = apply_preset(cfg, resolve_preset(preset))
     emotion = dict(EMOTION_DEFAULTS)
     emotion.update(cfg.get('emotion') or {})
     cfg['emotion'] = emotion
@@ -634,11 +646,13 @@ CREATE TABLE IF NOT EXISTS audit(
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--db',required=True)
+    parser.add_argument('--db')
     parser.add_argument('--config')
+    parser.add_argument('--preset',help='preset name (e.g. slow-forget, evergreen) or a path to a preset overlay')
     parser.add_argument('--now',type=float,help='Unix time override for isolated replay only')
     subs=parser.add_subparsers(dest='command',required=True)
     subs.add_parser('init')
+    subs.add_parser('presets',help='list the presets shipped with this package')
     ingest=subs.add_parser('event');ingest.add_argument('file')
     maintain=subs.add_parser('maintain');maintain.add_argument('--apply',action='store_true')
     subs.add_parser('outbox')
@@ -648,9 +662,18 @@ def main():
     active=subs.add_parser('active');active.add_argument('--requester',default='')
     purge=subs.add_parser('purge');purge.add_argument('--apply',action='store_true')
     args=parser.parse_args()
+    if args.command=='presets':
+        for preset_id in list_presets():
+            preset=resolve_preset(preset_id)
+            print('%-12s %s' % (preset_id,title(preset)))
+            if preset.get('note'):
+                print('             %s' % preset['note'])
+        return
+    if not args.db:
+        parser.error('--db is required for ' + args.command)
     if args.now is not None and os.environ.get('ES_MEMORY_REPLAY') != '1':
         parser.error('--now is for isolated replay only; set ES_MEMORY_REPLAY=1 to acknowledge')
-    engine=MemoryEngine(args.db,load_config(args.config))
+    engine=MemoryEngine(args.db,load_config(args.config,args.preset))
     try:
         if args.command=='init':result={'status':'ready'}
         elif args.command=='event':result=engine.process_event(json.loads(Path(args.file).read_text(encoding='utf-8-sig')),args.now)

@@ -1,0 +1,32 @@
+{
+  "id": "evergreen",
+  "name": "请你慢一点遗忘我 · 硅基长生",
+  "label": "极致档",
+  "note": "几乎不遗忘：λ 全部 ×0.01（默认的百分之一）；profile 下限抬到 60/80/85，权重最终收敛到「重要」线；压缩阈值压到 1 —— 投影永久保留原始长文，靠向量库存全量证据；随机删除完全关闭（delete_below=1 且概率=0）。",
+  "cost": "三件事必须一起接受：① 存储与 embedding 成本只增不减，没有记忆会自然消失；② 投影变长会让相关性数值的分布改变，min_relevance 必须重新标定（见 calibration）；③ 权重项最终不再区分记忆（都收敛到 60），排序基本由相关性决定。",
+  "calibration": {
+    "min_relevance": 0.53,
+    "measured_with": "BAAI/bge-m3 实测（scripts/demo_slow_forget.py，10 条中文记忆 × 13 条查询）。极致档永远保持全文投影，实测命中最低 0.5492、无关最高 0.5225，阈值 0.53 可做到零个无关记忆被放进来（余量 0.0267）。注意：阈值是按投影形态标的，形态变了就得重标 —— 事实投影下的实测值是 0.51，直接套 0.53 会把真正命中的记忆挡在外面。"
+  },
+  "config": {
+    "rates_per_hour": {
+      "fact": 0.00001,
+      "decision": 0.00003,
+      "observation": 0.00008,
+      "event": 0.0001,
+      "task": 0.00015,
+      "note": 0.0002
+    },
+    "profiles": {
+      "standard": {"floor": 60},
+      "important": {"floor": 80},
+      "active": {"floor": 85},
+      "paused": {"floor": 60}
+    },
+    "full_threshold": 1,
+    "facts_threshold": 1,
+    "delete_below": 1,
+    "delete_probability_per_day": 0.0,
+    "recycle_days": 30
+  }
+}

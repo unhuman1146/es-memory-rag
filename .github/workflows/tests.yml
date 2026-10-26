@@ -24,5 +24,7 @@ jobs:
         run: python scripts/test_adapter.py
       - name: 主动注入路径测试（39 项）
         run: python scripts/test_chat_path.py
-      # scripts/demo_live_rag.py 与 scripts/demo_live_injection.py 需要 embedding
-      # 凭据与网络访问，不在 CI 里跑。
+      - name: 慢遗忘预设测试（32 项）
+        run: python scripts/test_slow_forget.py
+      # scripts/demo_live_rag.py、scripts/demo_live_injection.py 与
+      # scripts/demo_slow_forget.py 需要 embedding 凭据与网络访问，不在 CI 里跑。

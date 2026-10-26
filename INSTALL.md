@@ -35,10 +35,10 @@ es-memory-rag/
 ├── INSTALL.md        ← 本文件
 ├── CHANGELOG.md
 ├── NOTICE.md         ← 第三方声明（本包无第三方代码）
-├── references/       ← 6 份展开文档
-├── scripts/          ← 参考引擎 + 96 项测试 + 真机验收脚本
+├── references/       ← 7 份展开文档
+├── scripts/          ← 参考引擎 + 167 项测试 + 真机验收脚本
 ├── adapters/         ← 参考适配器（embedding / 向量库 / rerank / outbox 消费）
-├── assets/           ← 配置样例、systemd 模板、事件样例
+├── assets/           ← 配置样例、慢遗忘预设、systemd 模板、事件样例
 └── agents/           ← openai.yaml
 ```
 
@@ -122,14 +122,16 @@ python scripts/test_memory_engine.py     # 应输出 Ran 39 tests ... OK
 python scripts/test_context_budget.py   # 应输出 Ran 17 tests ... OK
 python scripts/test_adapter.py          # 应输出 Ran 40 tests ... OK
 python scripts/test_chat_path.py        # 应输出 Ran 39 tests ... OK
+python scripts/test_slow_forget.py      # 应输出 Ran 32 tests ... OK
 ```
 
-这一步能同时验证四件事：目录结构完整、Python ≥ 3.11、参考引擎真能跑、参考适配器真能跑。
+这一步能同时验证五件事：目录结构完整、Python ≥ 3.11、参考引擎真能跑、参考适配器真能跑、慢遗忘预设真能跑。
 跑不过就是没装对，不是"环境问题"。
 
 > `scripts/demo_live_rag.py` 是**真机**验收（要 embedding 凭据和网络），
 > 装技能时不必跑；想看 RAG 真接通的样貌再跑它。
-> `scripts/demo_live_injection.py` 同理，验的是主动注入那一段。
+> `scripts/demo_live_injection.py` 同理，验的是主动注入那一段；
+> `scripts/demo_slow_forget.py` 验的是慢遗忘两档的阈值标定。
 
 ---
 
@@ -141,8 +143,21 @@ python scripts/test_chat_path.py        # 应输出 Ran 39 tests ... OK
    （`CHANGELOG.md` `README.md` `README.en.md` `INSTALL.md` `LICENSE` `NOTICE.md` 是新增或
    更新的，一并放上）
 3. **回读校验**：确认新 `SKILL.md` 的 frontmatter 有 `version:` 行，且
-   `references/` 下 6 份文档都在
-4. 跑上面**方法 B** 的三条测试
+   `references/` 下 7 份文档都在
+4. 跑上面**方法 B** 的五条测试
+
+### 从 1.2.0 升到 1.3.0 的差异
+
+- 新增 `assets/presets/` —— **「请你慢一点遗忘我」**慢遗忘预设，两档：
+  `slow-forget.json`（标准档，遗忘降到 1/20）与 `evergreen.json`（极致档，
+  遗忘降到 1/100、投影永久保留原始长文）
+- 新增 `scripts/presets.py`（预设注册表与 overlay 深合并）与
+  `scripts/test_slow_forget.py`（32 项）、`scripts/demo_slow_forget.py`（真机标定）
+- 新增 `references/slow-forget.md` —— 两档差异、实测数据、真实代价与边界
+- 引擎新增 `--preset` 与 `presets` 子命令：可按 ID、按中文名「请你慢一点遗忘我」、
+  或按自己的 overlay 文件指定
+- **默认配置一个字节都没改**；记忆生命周期的数值与语义、检索层、注入闸、注入预算
+  也一个都没改
 
 ### 从 1.1.0 升到 1.2.0 的差异
 

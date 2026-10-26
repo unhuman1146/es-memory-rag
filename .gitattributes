@@ -1,0 +1,14 @@
+# 统一行尾：仓库内一律 LF，检出也保持 LF。
+# 避免不同平台的检出结果不一致（Windows 默认 autocrlf=true 会把 LF 转成 CRLF）。
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.exe binary
+*.db binary
+*.db-wal binary
+*.db-shm binary

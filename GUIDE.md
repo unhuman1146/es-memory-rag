@@ -128,7 +128,15 @@ eng.injection_allowed(memory_id, now, user_initiated=False)  # False = 不许主
 eng.rank_score(relevance, weight, mood_similarity=None)      # 不传第三个参数 = 原公式
 ```
 
-**此时不要**：为了“不漏”而放大 `top_k` 或预算。注入预算每轮都在花，长任务里它是净成本。
+`adapters/chat_path.py` 是这一段的**参考实现**：查询构造 → 权限过滤检索 →
+按记忆去重 → 真实 rerank → 门控 → 联合排序 → 预算裁剪 → 注入块 + 缺失声明。
+接自己的检索系统时照它的顺序和口径接，别自造排序或门控。
+一个实测出来的注意点：**发送者稳定 ID 放进查询会毁掉相关性区分度**
+（每条投影的 subject 就是那个 ID，查询带上它等于跟每条候选共享 token，
+标定好的阈值会失效、权重项会开始主导排序）。人物信息应当用在权限过滤和排序加权上，
+详见 [references/adapters.md](references/adapters.md)。
+
+**此时不要**：为了"不漏"而放大 `top_k` 或预算。注入预算每轮都在花，长任务里它是净成本。
 
 ### S5 语义仓管：模型判断价值，代码执行数值
 

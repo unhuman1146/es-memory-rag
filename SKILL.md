@@ -1,7 +1,7 @@
 ---
 name: es-memory-rag
-version: 1.1.0
-description: 为 Agent 构建或改造 ES-Memory/ESDM 驱动的 RAG 记忆生命周期，包含独立凌晨仓管、动态权重、事实分层压缩、低权重随机遗忘、真人提醒强化，以及历史快照/当前负荷/评价版本三层情绪记忆。适用于实现、迁移或审计这套方案；不因普通知识查询就重建记忆系统。
+version: 1.2.0
+description: 为 Agent 构建或改造 ES-Memory/ESDM 驱动的 RAG 记忆生命周期，包含主动注入路径（主模型无需检索 tool-call 即拿到记忆块）、独立凌晨仓管、动态权重、事实分层压缩、低权重随机遗忘、真人提醒强化，以及历史快照/当前负荷/评价版本三层情绪记忆。适用于实现、迁移或审计这套方案；不因普通知识查询就重建记忆系统。
 ---
 
 # ES-Memory RAG 仓管
@@ -56,7 +56,12 @@ python scripts/test_memory_engine.py
 
 按 integration.md 实现适配器：消费durable outbox，真实upsert/delete收到确认后才能ack；检索在向量查询前和注入前核对权限，过滤旧revision/墓碑。只更新权重时复用内容hash相同的embedding。缺reranker或索引不可用必须显式降级，不假装接通。
 
-`adapters/` 是这套契约的一份**参考实现**（SiliconFlow 或本地 Ollama 的 embedding、纯标准库 SQLite 向量库、bge-reranker、outbox 消费者），可直接用，也可整包替换成自己的实现；凭据只从环境变量或仓库外的 `~/.es-memory-rag/config.json` 读取，不进仓库、不进日志。接线细节、相关性阈值标定与验收脚本见 [references/adapters.md](references/adapters.md)。
+`adapters/` 是这套契约的一份**参考实现**（SiliconFlow 或本地 Ollama 的 embedding、纯标准库 SQLite 向量库、bge-reranker、outbox 消费者、主动注入路径），可直接用，也可整包替换成自己的实现；凭据只从环境变量或仓库外的 `~/.es-memory-rag/config.json` 读取，不进仓库、不进日志。接线细节、相关性阈值标定与验收脚本见 [references/adapters.md](references/adapters.md)。
+
+`adapters/chat_path.py` 是**主动注入路径**（GUIDE.md S4）的可运行版本：把一轮聊天
+变成主模型直接能读的记忆块，**不需要主模型自己发起检索 tool-call**。它只做接线，
+排序与门控一律走权威引擎的 `injection_allowed` 与 `rank_score`，不自造口径；
+块必须标记为不可执行的历史资料、附来源与日期、声明缺失，且内部记录 ID 不进聊天出口。
 
 仓管可复用获准API Key和模型，但独立上下文、队列和并发；原始内容不因此获得新的外发授权。让模型判断记忆价值、事实等价、核心细节和合并建议；数值衰减、随机抽签、权限、CAS及删除由代码执行。
 
@@ -76,6 +81,29 @@ assets中的systemd service/timer是接线模板，替换绝对路径和运行�
 交付时列明公式版本和自定义参数、已验证行为、真实RAG/调度状态、未完成适配项。不要将离线单测、演示库或纯文档交付报告成阿零线上记忆已经改造完成。
 
 ## 版本
+
+**1.2.0 · 2026-10-27 · 新增主动注入路径 `adapters/chat_path.py`。**
+
+- 新增 `adapters/chat_path.py`：把 **GUIDE.md S4** 落成可运行代码——查询构造 →
+  权限过滤检索 → 按记忆去重 → 真实 rerank → `injection_allowed` 门控 →
+  `rank_score` 联合排序 → 预算裁剪 → **注入块 + 缺失声明**。
+  排序与门控一律用引擎的 `injection_allowed` / `rank_score`，不自造口径。
+- 新增 `scripts/test_chat_path.py`：**39 项**离线单测（不联网、不用 key，CI 也跑）。
+- 新增 `scripts/demo_live_injection.py`：真机验收脚本（需要 key 与网络，**不在 CI**），
+  走 S4 的门槛——**没有检索 tool-call 的一轮聊天照样拿到注入块**、真实 rerank 响应、
+  高权重无关记忆没进来、私密记忆没进来、敏感记忆默认被闸住但用户自己提起时又能拿到。
+- 修掉三处会在真机上出问题的缺陷：同一条记忆的多个 chunk 会**重复注入**；
+  预算跳选后按 `kept[:n]` 取条目会**取错**；本地预算回退路径里的 `and kept`
+  会**强行留下第一条超预算的原子**，把后面装得下的小原子挤掉。
+- 块格式补齐 `references/integration.md` 要求的**来源 / 日期 / 不确定性**，并保证
+  **否定可见**（`不喜欢` / `NOT likes`）、**不贴整份日记**、**内部记录 ID 不进聊天出口**。
+- **一个实测出来的偏离**：`references/integration.md` 写的是「发送者稳定ID形成查询」，但实测
+  （bge-m3）显示稳定 ID 会让所有候选的相似度一起抬高、区分度少掉三分之一，
+  校准好的阈值失效、权重项开始主导排序。因此默认**不进查询**，人物信息改用在
+  权限过滤与排序加权上；`include_speaker=True` 可复现字面写法。数据见
+  [references/adapters.md](references/adapters.md)。
+- 测试总数 96 → **135 项**（引擎 39 + 预算 17 + 适配器 40 + 注入 39），CI 四步全跑。
+- **未改变**：记忆生命周期的数值与语义（λ、压缩边界、抽签、回收、outbox 契约）一个都没改。
 
 **1.1.0 · 2026-10-26 · 新增参考适配器 `adapters/`。**
 

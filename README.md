@@ -3,8 +3,8 @@
 [中文](README.md) | **[English](README.en.md)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.1.0-5b8c7a)](https://github.com/unhuman1146/es-memory-rag/releases)
-[![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-96%20%E9%A1%B9%E5%85%A8%E8%BF%87-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.2.0-5b8c7a)](https://github.com/unhuman1146/es-memory-rag/releases)
+[![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-135%20%E9%A1%B9%E5%85%A8%E8%BF%87-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)
 
 把用户的 ESDM 记忆曲线接进真正的 RAG，并让**独立仓管**维护记忆生命周期。
 主聊天只使用按当前话题主动注入的事实投影，不承担实时整理。
@@ -44,10 +44,11 @@ python scripts/memory_engine.py --db demo.db maintain --apply
 # 待同步给 RAG 适配器的事件
 python scripts/memory_engine.py --db demo.db outbox
 
-# 测试：共 96 项
+# 测试：共 135 项
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
 python scripts/test_adapter.py
+python scripts/test_chat_path.py
 ```
 
 需要 Python 3.11+，**零第三方依赖**（仅标准库）。
@@ -81,8 +82,9 @@ es-memory-rag/
 │   ├── memory_engine.py    参考引擎（SQLite 事务、outbox、抽签、CAS）
 │   ├── context_budget.py   上下文组装与预算
 │   ├── demo_live_rag.py    真机验收脚本（需 key，不在 CI）
-│   └── test_*.py           96 项测试
-├── adapters/        参考适配器（embedding / 向量库 / rerank / 契约 / outbox 消费）
+│   ├── demo_live_injection.py  主动注入真机验收（需 key，不在 CI）
+│   └── test_*.py           135 项测试
+├── adapters/        参考适配器（embedding / 向量库 / rerank / 契约 / 主动注入 / outbox 消费）
 └── assets/
     ├── config.example.json
     ├── es-memory-warehouse.service / .timer   systemd 接线模板
@@ -105,9 +107,10 @@ es-memory-rag/
 - **已实测**（某商用长上下文接口，温度 0，合计 34 次调用）：tokenizer 系数 1 token ≈ 1.5 汉字；单针召回 12/12；语义干扰 15/15 严格正确、误取 0；延迟 2.9–21.6s 且不随长度增长
 - **未标定的工程默认值**：六档 λ、60/30 压缩边界、20% 日删除概率、情绪参数
 
-另外，本包的 96 项测试是**离线单测**：它们证明参考引擎与参考适配器的行为符合规范，
-**不证明**你的线上 RAG 或凌晨调度已经生效。要看真机跑通的样子，用
-`python scripts/demo_live_rag.py`（需要 embedding 凭据与网络，不在 CI）。
+另外，本包的 135 项测试是**离线单测**：它们证明参考引擎、参考适配器与主动注入路径的
+行为符合规范，**不证明**你的线上 RAG 或凌晨调度已经生效。要看真机跑通的样子，用
+`python scripts/demo_live_rag.py`（检索层）或 `python scripts/demo_live_injection.py`
+（注入层），两者都需要 embedding 凭据与网络，不在 CI。
 
 ## 文档地图
 

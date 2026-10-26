@@ -64,10 +64,11 @@ python scripts/memory_engine.py --db demo.db maintain --apply
 # pending jobs for the RAG adapter
 python scripts/memory_engine.py --db demo.db outbox
 
-# tests: 96 in total
+# tests: 135 in total
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
 python scripts/test_adapter.py
+python scripts/test_chat_path.py
 ```
 
 Requires Python 3.11+, **standard library only** — no third-party dependencies.
@@ -93,8 +94,9 @@ es-memory-rag/
 │   ├── memory_engine.py    reference engine (SQLite transactions, outbox, stable lottery, CAS)
 │   ├── context_budget.py   context assembly and budgeting
 │   ├── demo_live_rag.py    live acceptance script (needs a key, not in CI)
-│   └── test_*.py           96 tests
-├── adapters/        reference adapter (embedding / vector store / rerank / contract / outbox)
+│   ├── demo_live_injection.py  live acceptance of the injection path (needs a key, not in CI)
+│   └── test_*.py           135 tests
+├── adapters/        reference adapter (embedding / vector store / rerank / contract / injection path / outbox)
 └── assets/
     ├── config.example.json
     ├── es-memory-warehouse.service / .timer   systemd wiring templates
@@ -125,10 +127,12 @@ cite a default as a conclusion**:
 - **Uncalibrated engineering defaults**: the six λ rates, the 60/30 compression
   thresholds, the 20 % daily deletion probability, and every emotion parameter.
 
-The 96 tests are **offline unit tests**. They prove the reference engine and the
-reference adapter behave as specified. They do **not** prove that your RAG or
-your 02:00 job is live. `python scripts/demo_live_rag.py` runs the real thing
-(needs an embedding credential and network access; it is not part of CI).
+The 135 tests are **offline unit tests**. They prove the reference engine, the
+reference adapter and the proactive injection path behave as specified. They do
+**not** prove that your RAG or your 02:00 job is live.
+`python scripts/demo_live_rag.py` (retrieval) and
+`python scripts/demo_live_injection.py` (injection) run the real thing — both need
+an embedding credential and network access, and neither is part of CI.
 
 ## Documentation map
 

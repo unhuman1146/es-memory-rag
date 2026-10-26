@@ -22,4 +22,7 @@ jobs:
         run: python scripts/test_context_budget.py
       - name: 参考适配器测试（40 项）
         run: python scripts/test_adapter.py
-      # scripts/demo_live_rag.py 需要 embedding 凭据与网络访问，不在 CI 里跑。
+      - name: 主动注入路径测试（39 项）
+        run: python scripts/test_chat_path.py
+      # scripts/demo_live_rag.py 与 scripts/demo_live_injection.py 需要 embedding
+      # 凭据与网络访问，不在 CI 里跑。

@@ -121,6 +121,7 @@ cd <你的 skills 目录>/es-memory-rag
 python scripts/test_memory_engine.py     # 应输出 Ran 39 tests ... OK
 python scripts/test_context_budget.py   # 应输出 Ran 17 tests ... OK
 python scripts/test_adapter.py          # 应输出 Ran 40 tests ... OK
+python scripts/test_chat_path.py        # 应输出 Ran 39 tests ... OK
 ```
 
 这一步能同时验证四件事：目录结构完整、Python ≥ 3.11、参考引擎真能跑、参考适配器真能跑。
@@ -128,6 +129,7 @@ python scripts/test_adapter.py          # 应输出 Ran 40 tests ... OK
 
 > `scripts/demo_live_rag.py` 是**真机**验收（要 embedding 凭据和网络），
 > 装技能时不必跑；想看 RAG 真接通的样貌再跑它。
+> `scripts/demo_live_injection.py` 同理，验的是主动注入那一段。
 
 ---
 
@@ -141,6 +143,17 @@ python scripts/test_adapter.py          # 应输出 Ran 40 tests ... OK
 3. **回读校验**：确认新 `SKILL.md` 的 frontmatter 有 `version:` 行，且
    `references/` 下 6 份文档都在
 4. 跑上面**方法 B** 的三条测试
+
+### 从 1.1.0 升到 1.2.0 的差异
+
+- 新增 `adapters/chat_path.py` —— **主动注入路径**（GUIDE.md S4）：主模型不用发起
+  检索 tool-call，这一轮就能拿到记忆块
+- 新增 `scripts/test_chat_path.py`（39 项）与 `scripts/demo_live_injection.py`（真机验收）
+- `references/adapters.md` 新增「主动注入路径（S4）」一节：块格式、三个策略开关、
+  以及「说话人稳定 ID 不进查询」这个实测偏离
+- 修了三处会在真机上出问题的缺陷：同一条记忆多个 chunk 重复注入、预算跳选后取错条目、
+  本地预算回退强行留下超预算的第一条
+- **记忆生命周期的数值与语义一个都没改**
 
 ### 从 1.0.0 升到 1.1.0 的差异
 

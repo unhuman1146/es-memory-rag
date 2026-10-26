@@ -1,0 +1,11 @@
+[Unit]
+Description=ES-Memory deterministic nightly warehouse and RAG outbox planning
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/es-memory-rag
+ExecStart=/usr/bin/python3 /opt/es-memory-rag/scripts/memory_engine.py --db /data/es-memory/memory.db --config /etc/es-memory/config.json maintain --apply
+Nice=10
+
+# This reference creates durable RAG work, not an external index acknowledgment.
+# Start the application's real RAG outbox consumer separately.

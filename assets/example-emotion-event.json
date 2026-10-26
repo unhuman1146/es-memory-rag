@@ -1,0 +1,27 @@
+{
+  "id": "demo:message:emotion:001",
+  "kind": "human_message",
+  "peer_id": "demo-agent:private:qq10001:sender10001",
+  "sender_id": "qq:10001",
+  "visibility": "private",
+  "content": "2023年4月那次评审我到现在还记得，当时我特别难过，觉得是在否定我这个人。现在回头看，其实只是一次普通的技术意见分歧。",
+  "actions": [{
+    "kind": "add",
+    "id": "demo:emotion:001",
+    "body": "用户回忆2023年4月的一次评审，当时情绪反应强烈，现在的理解已经改变。",
+    "weight": 50,
+    "curve": "fact",
+    "profile": "important",
+    "emotion": {
+      "valence": -0.8,
+      "arousal": 0.9,
+      "confidence": 0.85,
+      "sensitive": true,
+      "appraisal": "当时把技术意见分歧理解成了对整个人的否定"
+    },
+    "facts": [
+      {"subject": "qq:10001", "predicate": "felt", "object": "难过", "time": "2023-04", "negated": false, "source_ids": ["demo:message:emotion:001"], "core": true},
+      {"subject": "qq:10001", "predicate": "experienced", "object": "评审中的技术意见分歧", "time": "2023-04", "negated": false, "source_ids": ["demo:message:emotion:001"], "core": true}
+    ]
+  }]
+}

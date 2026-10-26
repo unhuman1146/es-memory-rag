@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# 运行期数据库（含记忆正文，不要提交）
+*.db
+*.db-wal
+*.db-shm
+
+# 备份与临时文件
+*.bak-*
+*.tmp-*
+
+# 环境与密钥
+.env
+.env.*
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

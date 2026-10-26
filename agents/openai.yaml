@@ -1,0 +1,3 @@
+interface:
+  display_name: "ES-Memory RAG 仓管"
+  short_description: "复现记忆权重衰减、分层压缩、随机遗忘、提醒强化、三层情绪记忆与独立夜间仓管"

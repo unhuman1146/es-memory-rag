@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily ES-Memory warehouse at 02:00 Asia/Shanghai
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 Asia/Shanghai
+Persistent=true
+Unit=es-memory-warehouse.service
+
+[Install]
+WantedBy=timers.target

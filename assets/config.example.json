@@ -1,0 +1,42 @@
+{
+  "timezone": "Asia/Shanghai",
+  "warehouse_time": "02:00",
+  "formula_mode": "rate_multiplier",
+  "rates_per_hour": {"fact": 0.001, "decision": 0.003, "observation": 0.008, "event": 0.010, "task": 0.015, "note": 0.020},
+  "profiles": {
+    "standard": {"mult": 1.0, "floor": 0},
+    "important": {"mult": 0.3, "floor": 30},
+    "permanent": {"mult": 0.0, "floor": 101},
+    "active": {"mult": 0.1, "floor": 50},
+    "paused": {"mult": 0.05, "floor": 10},
+    "archived": {"mult": 0.0, "floor": 5}
+  },
+  "initial_weight": 50,
+  "protected_weight": 90,
+  "max_weight": 101,
+  "reminder_boost": 10,
+  "used_boost": 1,
+  "dedup_seconds": 120,
+  "full_threshold": 60,
+  "facts_threshold": 30,
+  "delete_below": 10,
+  "delete_probability_per_day": 0.2,
+  "recycle_days": 7,
+  "warehouse_concurrency": 1,
+  "outbox_max_attempts": 8,
+  "outbox_acked_retention_days": 7,
+  "dedup_normalize": "whitespace",
+  "rag": {"require_rerank": true, "top_k": 6, "context_token_budget": 1200, "relevance_weight": 0.8, "memory_weight": 0.2},
+  "emotion": {
+    "enabled": true,
+    "encoding_boost": 0.8,
+    "rate_gain": 1.5,
+    "charge_half_life_days": 60,
+    "arousal_half_life_gain": 2.0,
+    "negative_valence_half_life_factor": 0.6,
+    "remind_recharge": 0.7,
+    "reappraisal_charge_relief": 0.25,
+    "auto_sensitive_charge": 0.6,
+    "mood_weight": 0.1
+  }
+}

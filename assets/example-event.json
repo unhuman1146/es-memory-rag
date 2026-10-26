@@ -1,0 +1,21 @@
+{
+  "id": "demo:message:001",
+  "kind": "human_message",
+  "peer_id": "demo-agent:private:qq10001:sender10001",
+  "sender_id": "qq:10001",
+  "visibility": "shared",
+  "content": "我喜欢无糖茶，不喜欢甜奶茶，上周试过乌龙",
+  "actions": [{
+    "kind": "add",
+    "id": "demo:preference:001",
+    "body": "用户聊过饮品偏好，并提到了上周尝试乌龙的细节。",
+    "weight": 50,
+    "curve": "fact",
+    "profile": "standard",
+    "facts": [
+      {"subject": "qq:10001", "predicate": "likes", "object": "无糖茶", "time": null, "negated": false, "source_ids": ["demo:message:001"], "core": true},
+      {"subject": "qq:10001", "predicate": "likes", "object": "甜奶茶", "time": null, "negated": true, "source_ids": ["demo:message:001"], "core": true},
+      {"subject": "qq:10001", "predicate": "tried", "object": "乌龙茶", "time": "上周，绝对日期未确定", "negated": false, "source_ids": ["demo:message:001"], "core": false}
+    ]
+  }]
+}

@@ -205,17 +205,22 @@ class RAGAdapter:
                     'reason': 'reranker failed: %s' % (exc,), 'reranker_backend': getattr(self.reranker, 'backend', 'unknown')}
 
         ordered = []
+        used = set()
         for item in ranked:
             index = item['index']
-            if 0 <= index < len(candidates):
+            if 0 <= index < len(candidates) and index not in used:
+                used.add(index)
                 cand = dict(candidates[index])
                 cand['rerank_score'] = item['score']
                 ordered.append(cand)
-        missing = len(candidates) - len(ordered)
-        if missing:
-            for cand in candidates:
-                if all(c is not None for c in ordered) and cand not in ordered:
-                    ordered.append(cand)
+        # A reranker may answer with a subset (many vendors return only the
+        # top-n). Append what it did not rank, once, in arrival order. The
+        # previous version compared dicts against already-ranked dicts that
+        # carry an extra ``rerank_score`` key, so nothing ever matched and
+        # every candidate was appended a second time.
+        for index, cand in enumerate(candidates):
+            if index not in used:
+                ordered.append(dict(cand))
         status = 'degraded' if getattr(self.reranker, 'backend', '') == 'lexical' else 'ok'
         return {'status': status, 'candidates': ordered,
                 'reranker_backend': getattr(self.reranker, 'backend', 'unknown')}

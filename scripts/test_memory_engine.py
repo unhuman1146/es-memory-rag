@@ -343,11 +343,12 @@ class OpsTests(unittest.TestCase):
 
     def test_unchanged_rows_do_not_churn_revision_or_outbox(self):
         self.add(weight=90)  # Protected: decay is a no-op, so maintenance must be too.
+        settled=self.engine.row('m1')['revision']
         baseline=len(self.engine.outbox())
         stats=self.engine.apply_plan(self.engine.plan(NOW+86400))
         self.assertEqual(stats['unchanged'],1)
         self.assertEqual(stats['processed'],0)
-        self.assertEqual(self.engine.row('m1')['revision'],1)
+        self.assertEqual(self.engine.row('m1')['revision'],settled)
         self.assertEqual(self.engine.row('m1')['maintenance_day'],local_day(NOW+86400,self.cfg))
         self.assertEqual(len(self.engine.outbox()),baseline)
         again=self.engine.apply_plan(self.engine.plan(NOW+86400))
@@ -371,6 +372,14 @@ class OpsTests(unittest.TestCase):
         self.assertEqual(len(self.engine.outbox()),2)
 
     def add(self,**kwargs):
+        weight=kwargs.get('weight')
+        if weight is not None and weight>=self.cfg['protected_weight']:
+            # Intake refuses W>=90 on purpose; a test that needs a protected
+            # row takes the same trusted path an operator would.
+            kwargs['weight']=self.cfg['protected_weight']-1
+            e=event(**kwargs);self.engine.process_event(e,NOW)
+            self.engine.set_weight_trusted(kwargs.get('mid','m1'),weight,'test fixture',NOW)
+            return e
         e=event(**kwargs);self.engine.process_event(e,NOW);return e
 
     def test_outbox_fail_dead_letter_and_retry(self):
@@ -444,6 +453,64 @@ class OpsTests(unittest.TestCase):
         elapsed=time.time()-start
         self.assertEqual(stats['processed'],3000)
         self.assertLess(elapsed,15)  # Generous ceiling; guards against accidental O(N^2).
+
+
+class WeightCeilingTests(unittest.TestCase):
+    """W>=90 belongs to trusted admin operations, not to the intake envelope.
+
+    The event payload carries the Curator's proposal, so a single "this is
+    important" must not be able to hand out permanent protection (GUIDE.md S5,
+    references/design.md "常规自动赋权控制在 0-89").
+    """
+
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory()
+        self.cfg=load_config()
+        self.engine=MemoryEngine(Path(self.tmp.name)/'test.db',self.cfg)
+
+    def tearDown(self):
+        self.engine.close();self.tmp.cleanup()
+
+    def test_intake_rejects_weight_at_or_above_the_protected_line(self):
+        for weight in (90,100,101):
+            with self.assertRaises(ValueError):
+                self.engine.process_event(
+                    event(eid='e%d'%weight,mid='m%d'%weight,weight=weight),NOW)
+        self.assertEqual(self.engine.db.execute('SELECT COUNT(*) FROM memories').fetchone()[0],0)
+        self.assertEqual(self.engine.outbox(),[])
+
+    def test_intake_accepts_the_highest_unprotected_weight(self):
+        ceiling=self.cfg['protected_weight']-1
+        self.engine.process_event(event(weight=ceiling),NOW)
+        row=self.engine.row('m1')
+        self.assertEqual(row['weight'],float(ceiling))
+        self.assertEqual(row['pinned'],0)
+        self.assertEqual(row['tier'],'full')
+
+    def test_trusted_elevation_is_audited_and_protected(self):
+        self.engine.process_event(event(weight=50),NOW)
+        before=self.engine.row('m1')['revision']
+        self.engine.set_weight_trusted('m1',95,'ops: user asked for this by hand',NOW)
+        row=self.engine.row('m1')
+        self.assertEqual(row['weight'],95.0)
+        self.assertEqual(row['revision'],before+1)
+        self.assertEqual(row['tier'],'full')
+        audit=[dict(r) for r in self.engine.db.execute(
+            "SELECT action,detail FROM audit WHERE memory_id='m1' ORDER BY id")]
+        self.assertEqual(audit[-1]['action'],'trusted_weight')
+        self.assertIn('ops: user asked for this by hand',audit[-1]['detail'])
+        self.assertEqual(self.engine.outbox()[-1]['operation'],'upsert')
+
+    def test_trusted_elevation_requires_a_reason_and_a_live_row(self):
+        self.engine.process_event(event(weight=50),NOW)
+        with self.assertRaises(ValueError):
+            self.engine.set_weight_trusted('m1',95,'',NOW)
+        with self.assertRaises(ValueError):
+            self.engine.set_weight_trusted('missing',95,'ops',NOW)
+        for weight in (-1,self.cfg['max_weight']+1):
+            with self.assertRaises(ValueError):
+                self.engine.set_weight_trusted('m1',weight,'ops',NOW)
+        self.assertEqual(self.engine.row('m1')['weight'],50.0)
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

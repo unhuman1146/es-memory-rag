@@ -103,11 +103,15 @@ class ChatPath:
                  require_rerank=None, mark_degraded=True, clock=None, min_relevance=None,
                  include_speaker=False):
         rag = {}
+        preset = {}
         if engine is not None:
             try:
-                rag = (getattr(engine, 'cfg', None) or {}).get('rag') or {}
+                cfg = getattr(engine, 'cfg', None) or {}
+                rag = cfg.get('rag') or {}
+                preset = cfg.get('preset') or {}
             except Exception:
                 rag = {}
+                preset = {}
         self.engine = engine
         self.adapter = adapter
         self.budget = budget
@@ -128,6 +132,13 @@ class ChatPath:
         # the injection layer is where "a high-weight but unrelated memory must
         # not be pushed into the context" has to hold, so the gate is repeated
         # here with an explicit reason instead of being assumed.
+        # A preset ships the floor it was measured with as
+        # ``preset.min_relevance``; an explicit ``rag.min_relevance`` and an
+        # explicit argument both win over it.
+        if min_relevance is None:
+            min_relevance = rag.get('min_relevance')
+        if min_relevance is None:
+            min_relevance = preset.get('min_relevance')
         self.min_relevance = min_relevance
         # The sender's stable id in the query: off by default, see
         # build_query() for the measurement behind it.

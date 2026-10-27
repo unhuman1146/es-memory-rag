@@ -1,5 +1,44 @@
 # 更新说明
 
+## 1.3.1 · 2026-10-27
+
+**修三个缺陷：一个能越权的权重入口、一个会重复追加候选的重排补齐、一个没人读的标定值。**
+
+发布内容：
+
+- **修（高）**：intake 能给出 `W>=90` 的永久保护。`process_event` 的 `add` 只校验
+  `0..max_weight(101)`，而 GUIDE S5 与 `references/design.md` 都写「常规自动赋权控制在
+  0–89，W≥90 只能来自受信管理操作」。一条 `weight: 101` 的事件可以入库，并且
+  `pinned=0`、10 万小时后仍是 101 —— 等于模型一句「这很重要」就能锁死一条记忆。
+  现在 intake 上限是 `protected_weight - 1`，越界直接 `ValueError`。
+- **新增** `MemoryEngine.set_weight_trusted(mid, weight, reason)`：受信管理入口，可设到
+  `max_weight`，必须给理由，写 `trusted_weight` 审计（含改前/改后权重与理由）、
+  bump revision、并把新投影推入 outbox。同时把 `last_decay` 移到当前时刻，
+  避免下一次结算从旧时间点再衰减一遍。它是**工程误用防护，不是安全边界** ——
+  能写库的人可以绕过，和计划签名同一性质。
+- **修（中）**：`RAGAdapter.rerank` 在 reranker 只返回子集（多数厂商只回 top-n）时会把
+  **全部候选重复追加**。原因是补齐循环拿原始 dict 去和已排好的 dict 比，
+  而后者多了一个 `rerank_score` 键，永远不相等。实测 5 条候选 + 返回 2 条 → 输出 7 条，
+  `m0/m1` 各出现两次，`status` 仍报 `ok`。现在按 index 去重补齐，未返回的候选
+  按原顺序追加一次。
+- **修（中）**：预设里的 `calibration.min_relevance`（`slow-forget` 0.51 / `evergreen` 0.53）
+  **没有任何代码读取** —— 三个 demo 都硬编码 `MIN_RELEVANCE = 0.45`。文档写「两个预设的
+  `calibration.min_relevance` 不一样」，读起来像自动生效，实际要手抄。
+  现在 `load_config(preset=)` 把它挂到 `cfg['preset']['min_relevance']`，
+  `ChatPath` 在没有显式传参、也没有 `rag.min_relevance` 时读它。
+  **`cfg['rag']` 仍然一个字节都不动** —— 预设不许改检索层，这条守门测试照旧通过。
+- **文档**：`references/slow-forget.md` 补两条此前没写清的边界 ——
+  ① floor 会**向上抬**：初始 20 分的低价值记忆，极致档次日变成 60 分并从 `core` 升到
+  `full`，即「所有记忆都被追认为重要」，这是「忘得慢」的必然副作用而不只是成本；
+  ② 「原文永存」的收益仅限检索召回，`detail` 不进注入块
+  （`references/adapters.md` 已写，此处补上交叉引用）。
+- **文档**：`GUIDE.md` S5 判据 3 写明该上限由 intake 强制、受信操作走哪个入口。
+- **测试**：167 → **181 项**（引擎 43 + 预算 17 + 适配器 43 + 注入 43 + 慢遗忘 35）。
+  新增的 14 项全部先写、先用旧代码跑出 FAIL，再修到 PASS。
+- **未改变**：λ、压缩边界、抽签、回收期、outbox 契约、`rag` 配置、情绪参数与
+  慢遗忘两档的数值，一个都没改。默认配置的行为与 1.3.0 完全一致，
+  唯一的行为变化是「intake 不能再给出 W≥90」—— 那本来就是文档承诺的语义。
+
 ## 1.3.0 · 2026-10-26
 
 **新增「请你慢一点遗忘我」模式：让遗忘慢下来，靠向量库存住全部证据。**

@@ -425,5 +425,41 @@ class SyncTests(Base):
                                                        'failed': 0, 'dead': 0, 'items': []}))
 
 
+class RerankContractTests(Base):
+    """A reranker may answer with a subset; padding must not duplicate rows.
+
+    Some vendors return only the top-n. The completion step used to compare a
+    candidate dict against already-ranked dicts that carry an extra
+    ``rerank_score`` key, so the comparison never matched and every candidate
+    was appended a second time.
+    """
+
+    def candidates(self, count):
+        return [{'memory_id': 'm%d' % i, 'text': 't%d' % i,
+                 'score': 1.0 - i * 0.1, 'relevance': 1.0 - i * 0.1}
+                for i in range(count)]
+
+    def test_partial_response_is_completed_without_duplicates(self):
+        adapter = RAGAdapter(self.emb, self.store, reranker=FakeReranker(order=[3, 1]))
+        result = adapter.rerank('q', self.candidates(5))
+        ids = [c['memory_id'] for c in result['candidates']]
+        self.assertEqual(len(ids), len(set(ids)), 'duplicated candidates: %s' % ids)
+        self.assertEqual(len(ids), 5)
+        self.assertEqual(ids[:2], ['m3', 'm1'], 'reranker order must lead')
+        self.assertEqual(result['status'], 'ok')
+
+    def test_unreturned_candidates_are_appended_once_in_score_order(self):
+        adapter = RAGAdapter(self.emb, self.store, reranker=FakeReranker(order=[2]))
+        result = adapter.rerank('q', self.candidates(4))
+        ids = [c['memory_id'] for c in result['candidates']]
+        self.assertEqual(ids, ['m2', 'm0', 'm1', 'm3'])
+
+    def test_full_response_is_untouched(self):
+        adapter = RAGAdapter(self.emb, self.store, reranker=FakeReranker())
+        result = adapter.rerank('q', self.candidates(4))
+        self.assertEqual([c['memory_id'] for c in result['candidates']],
+                         ['m0', 'm1', 'm2', 'm3'])
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -59,7 +59,16 @@ def load_config(path=None, preset=None):
     """
     cfg = json.loads(Path(path or DEFAULT_CONFIG).read_text(encoding='utf-8'))
     if preset:
-        cfg = apply_preset(cfg, resolve_preset(preset))
+        resolved = resolve_preset(preset)
+        cfg = apply_preset(cfg, resolved)
+        # The measured relevance floor rides along as preset metadata, not as a
+        # change to ``rag``: a preset may not rewrite the retrieval layer
+        # (test_slow_forget asserts ``cfg['rag']`` is untouched). ChatPath reads
+        # this only when ``rag.min_relevance`` was not set explicitly.
+        calibration = resolved.get('calibration') or {}
+        cfg['preset'] = {'id': resolved.get('id') or '',
+                         'name': title(resolved),
+                         'min_relevance': calibration.get('min_relevance')}
     emotion = dict(EMOTION_DEFAULTS)
     emotion.update(cfg.get('emotion') or {})
     cfg['emotion'] = emotion
@@ -100,6 +109,13 @@ def load_config(path=None, preset=None):
     for key in ('reminder_boost', 'used_boost', 'dedup_seconds', 'recycle_days'):
         if not isinstance(cfg[key], (float, int)) or not math.isfinite(cfg[key]) or cfg[key] < 0:
             raise ValueError('invalid policy value: ' + key)
+    floors = [('rag.min_relevance', (cfg.get('rag') or {}).get('min_relevance')),
+              ('preset.min_relevance', (cfg.get('preset') or {}).get('min_relevance'))]
+    for label, floor in floors:
+        if floor is None:
+            continue
+        if not isinstance(floor, (int, float)) or isinstance(floor, bool) or not math.isfinite(floor):
+            raise ValueError('invalid ' + label)
     return cfg
 
 
@@ -389,8 +405,15 @@ CREATE TABLE IF NOT EXISTS audit(
                         if event['id'] not in fact['source_ids'] or not all(isinstance(s,str) for s in fact['source_ids']):
                             raise ValueError('new facts must cite this verified input event')
                     weight = action.get('weight', self.cfg['initial_weight'])
-                    if type(weight) not in (int,float) or not math.isfinite(weight) or not 0 <= weight <= self.cfg['max_weight']:
-                        raise ValueError('invalid weight')
+                    # Intake carries the Curator's proposal, so it cannot grant
+                    # the W>=90 protection line to itself. A trusted management
+                    # operation uses set_weight_trusted() instead.
+                    ceiling = self.cfg['protected_weight'] - 1
+                    if (type(weight) not in (int,float) or not math.isfinite(weight)
+                            or not 0 <= weight <= ceiling):
+                        raise ValueError(
+                            'intake weight must be within 0..%d; W>=%d requires set_weight_trusted()'
+                            % (ceiling, self.cfg['protected_weight']))
                     curve, profile = action.get('curve','fact'), action.get('profile','standard')
                     if curve not in self.cfg['rates_per_hour'] or profile not in self.cfg['profiles']:
                         raise ValueError('unknown curve/profile')
@@ -480,6 +503,46 @@ CREATE TABLE IF NOT EXISTS audit(
         except BaseException:
             self.db.rollback()
             raise
+
+    def set_weight_trusted(self, mid, weight, reason, now=None):
+        """Set a weight through the trusted path, including W >= protected_weight.
+
+        Intake is capped one point below the protection line so a model
+        proposal cannot award itself permanent life; this is the documented
+        exception ("W>=90 只能来自受信管理操作"). It is an engineering guard
+        against accidental misuse, not a security boundary -- anyone who can
+        write the database bypasses it.
+
+        The change is audited with the reason and pushed to the outbox like any
+        other state change.
+        """
+        now = time.time() if now is None else now
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError('a trusted weight change needs a reason')
+        if (type(weight) not in (int, float) or not math.isfinite(weight)
+                or not 0 <= weight <= self.cfg['max_weight']):
+            raise ValueError('invalid weight')
+        row = self.row(mid)
+        if not row or row['purged'] or row['deleted_at'] is not None:
+            raise ValueError('no live memory: ' + str(mid))
+        tier = tier_for(weight, self.cfg, row['pinned'])
+        # `last_decay` moves with the weight: the new value is authoritative as
+        # of now, so the next settlement must not re-decay it from an old point.
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            self.db.execute('''UPDATE memories SET weight=?,tier=?,text=?,last_decay=?,
+                revision=revision+1 WHERE id=?''',
+                (float(weight), tier,
+                 projection(dict(row, weight=weight), tier, self.cfg, now), now, mid))
+            self._queue(mid)
+            self._audit(mid, 'trusted_weight', now, weight_before=row['weight'],
+                        weight_after=float(weight), reason=reason.strip())
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
+        return {'status': 'ok', 'memory_id': mid, 'weight': float(weight),
+                'revision': row['revision'] + 1}
 
     def plan(self, now=None):
         now = time.time() if now is None else now

@@ -162,7 +162,9 @@ print(ranked['status'], ranked['candidates'])
 
 另有两个构造参数：
 
-- `min_relevance`：注入层再过一道相关性阈值（适配器里那道之外）。
+- `min_relevance`：注入层再过一道相关性阈值（适配器里那道之外）。留空时依次回退到
+  `rag.min_relevance`、`preset.min_relevance`（预设自带的实测值，见
+  [slow-forget.md](slow-forget.md)）；显式传参永远优先。
 - `include_speaker`：见下。
 
 ### 一个实测出来的偏离：说话人稳定 ID 不进查询

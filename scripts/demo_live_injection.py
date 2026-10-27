@@ -54,8 +54,9 @@ MEMORIES = [
                {'subject': 'qq:10001', 'predicate': '职业', 'object': '后端开发工程师',
                 'negated': False, 'time': None, 'source_ids': ['evt-1'], 'core': True}]},
     # High weight, completely different topic: it must not be injected for a
-    # question about where the user lives.
-    {'id': 'm_milktea', 'src': 'evt-2', 'weight': 95, 'visibility': 'shared',
+    # question about where the user lives. 89 is the highest weight the intake
+    # will accept -- W>=90 belongs to trusted admin operations.
+    {'id': 'm_milktea', 'src': 'evt-2', 'weight': 89, 'visibility': 'shared',
      'facts': [{'subject': 'qq:10001', 'predicate': '喝', 'object': '甜奶茶', 'negated': True,
                 'time': None, 'source_ids': ['evt-2'], 'core': True}]},
     # Private to somebody else: it must never reach this user's context.

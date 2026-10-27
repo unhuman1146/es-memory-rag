@@ -520,5 +520,45 @@ class EndToEndTests(Base):
         self.assertNotIn('乌龙茶', report['block'])
 
 
+class PresetCalibrationTests(Base):
+    """A preset's measured relevance floor must actually reach the chat path.
+
+    The floor is per projection shape (fact atoms ~0.51, full text ~0.53), so
+    the preset ships it next to the numbers it was measured with. Before this
+    was wired up, ``calibration.min_relevance`` was read by nothing.
+    """
+
+    def preset_path(self, preset, engine_cfg=None, **kwargs):
+        """A ChatPath over an engine built with a preset config.
+
+        The engine is closed here on purpose: ``tearDown`` deletes the temp
+        directory first and a still-open SQLite file cannot be removed on
+        Windows.
+        """
+        path_on_disk = Path(self.tmp.name) / ('mem-%s.db' % preset)
+        engine = MemoryEngine(path_on_disk, engine_cfg or load_config(preset=preset))
+        try:
+            return ChatPath(engine, self.adapter, **kwargs)
+        finally:
+            engine.close()
+
+    def test_floor_comes_from_the_preset_config(self):
+        self.assertAlmostEqual(self.preset_path('evergreen').min_relevance, 0.53)
+        self.assertAlmostEqual(self.preset_path('slow-forget').min_relevance, 0.51)
+
+    def test_explicit_argument_still_wins(self):
+        path = self.preset_path('evergreen', min_relevance=0.8)
+        self.assertEqual(path.min_relevance, 0.8)
+
+    def test_default_engine_keeps_no_floor(self):
+        self.assertIsNone(self.path().min_relevance)
+
+    def test_explicit_rag_floor_beats_the_preset_metadata(self):
+        cfg = load_config(preset='evergreen')
+        cfg['rag'] = dict(cfg['rag'], min_relevance=0.7)
+        path = self.preset_path('evergreen', engine_cfg=cfg)
+        self.assertEqual(path.min_relevance, 0.7)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

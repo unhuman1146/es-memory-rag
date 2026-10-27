@@ -1,6 +1,6 @@
 ---
 name: es-memory-rag
-version: 1.3.0
+version: 1.3.1
 description: 为 Agent 构建或改造 ES-Memory/ESDM 驱动的 RAG 记忆生命周期，包含主动注入路径（主模型无需检索 tool-call 即拿到记忆块）、独立凌晨仓管、动态权重、事实分层压缩、低权重随机遗忘、「请你慢一点遗忘我」慢遗忘预设（两档：遗忘降速 / 原文永存）、真人提醒强化，以及历史快照/当前负荷/评价版本三层情绪记忆。适用于实现、迁移或审计这套方案；不因普通知识查询就重建记忆系统。
 ---
 
@@ -106,6 +106,23 @@ assets中的systemd service/timer是接线模板，替换绝对路径和运行�
 交付时列明公式版本和自定义参数、已验证行为、真实RAG/调度状态、未完成适配项。不要将离线单测、演示库或纯文档交付报告成阿零线上记忆已经改造完成。
 
 ## 版本
+
+**1.3.1 · 2026-10-27 · 修三个缺陷。**
+
+- **intake 不再能给出 `W>=90`。** `add` 的权重上限从 `max_weight(101)` 收紧到
+  `protected_weight - 1`（89），越界直接 `ValueError`。此前一条 `weight: 101` 的事件
+  可以入库并永久不衰减，等于模型一句「这很重要」就能锁死记忆 ——
+  与本文「常规自动赋权 0–89」的承诺不符。
+- **新增 `MemoryEngine.set_weight_trusted(mid, weight, reason)`**：受信管理入口，
+  可设到 101，必须给理由，写 `trusted_weight` 审计、bump revision、推送新投影到 outbox。
+  这是「W≥90 只能来自受信管理操作」里那个操作；它是误用防护，不是安全边界。
+- **`RAGAdapter.rerank` 不再重复追加候选。** reranker 只返回 top-n 时，补齐逻辑
+  拿原始 dict 与带 `rerank_score` 的 dict 比较，永不相等，导致全部候选被追加第二次
+  （5 条输入 → 7 条输出）。改为按 index 去重。
+- **预设的 `calibration.min_relevance` 接通了。** 此前无任何代码读取，demo 全硬编码 0.45。
+  现在通过 `cfg['preset']['min_relevance']` 供 `ChatPath` 使用，`cfg['rag']` 不动。
+- 测试 167 → **181 项**；`references/slow-forget.md` 补了 floor 向上抬与
+  `detail` 不进注入块两条边界。
 
 **1.3.0 · 2026-10-26 · 新增「请你慢一点遗忘我」慢遗忘预设。**
 

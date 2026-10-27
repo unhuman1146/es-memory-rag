@@ -151,7 +151,9 @@ eng.rank_score(relevance, weight, mood_similarity=None)      # 不传第三个�
 
 1. 一条**未被回复**的用户消息也进入了记忆判断队列。
 2. 桥接层重放的同一条消息不产生第二次建档或第二次强化。
-3. 模型给出的 `weight` 不能越过 89；`W≥90` 只能来自受信管理操作。
+3. 模型给出的 `weight` 不能越过 89；`W≥90` 只能来自受信管理操作。intake 已强制这条：
+   越界直接 `ValueError`，受信操作走 `MemoryEngine.set_weight_trusted(mid, weight, reason)`
+   （写审计、bump revision、推送 outbox）。
 4. 模型提出的删除/压缩计划**不能**直接传给 `apply_plan`（会被签名拒绝）。
 
 **此时不要**：让 Curator 复制主聊天的全部思维，也不要让它自带数值运算权。

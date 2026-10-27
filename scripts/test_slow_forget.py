@@ -408,5 +408,28 @@ class CliTests(unittest.TestCase):
         self.assertEqual(json.loads(out.stdout), [])
 
 
+class CalibrationWiringTests(unittest.TestCase):
+    """The measured threshold must reach the chat path, not just the document.
+
+    ``calibration.min_relevance`` used to be metadata that nothing read, so a
+    preset declared 0.51 / 0.53 while every demo kept hardcoding 0.45 -- a
+    knob that looked load-bearing and did nothing.
+    """
+
+    def test_preset_calibration_reaches_the_config(self):
+        self.assertAlmostEqual(load_config(preset='slow-forget')['preset']['min_relevance'], 0.51)
+        self.assertAlmostEqual(load_config(preset='evergreen')['preset']['min_relevance'], 0.53)
+
+    def test_the_value_rides_outside_the_retrieval_layer(self):
+        """A preset may not rewrite ``rag``; the floor travels as metadata."""
+        base = load_config()
+        for name in ('slow-forget', 'evergreen'):
+            self.assertEqual(load_config(preset=name)['rag'], base['rag'],
+                             '%s must not touch the retrieval layer' % name)
+
+    def test_default_config_has_no_preset_section(self):
+        self.assertNotIn('preset', load_config())
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

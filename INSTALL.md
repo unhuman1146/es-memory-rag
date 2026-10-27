@@ -36,7 +36,7 @@ es-memory-rag/
 ├── CHANGELOG.md
 ├── NOTICE.md         ← 第三方声明（本包无第三方代码）
 ├── references/       ← 7 份展开文档
-├── scripts/          ← 参考引擎 + 167 项测试 + 真机验收脚本
+├── scripts/          ← 参考引擎 + 181 项测试 + 真机验收脚本
 ├── adapters/         ← 参考适配器（embedding / 向量库 / rerank / outbox 消费）
 ├── assets/           ← 配置样例、慢遗忘预设、systemd 模板、事件样例
 └── agents/           ← openai.yaml

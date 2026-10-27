@@ -52,8 +52,10 @@ MEMORIES = [
                {'subject': '用户', 'predicate': '职业', 'object': '后端开发工程师', 'negated': False,
                 'time': None, 'source_ids': ['e1'], 'core': True}]},
     # High weight, completely different topic: it must not be injected for a
-    # question about where the user works.
-    {'id': 'm_milktea', 'weight': 95, 'visibility': 'shared',
+    # question about where the user works. 89 is the highest weight the intake
+    # will accept -- W>=90 belongs to trusted admin operations, so a fixture
+    # cannot (and should not) get there through an event.
+    {'id': 'm_milktea', 'weight': 89, 'visibility': 'shared',
      'facts': [{'subject': '用户', 'predicate': '不喝', 'object': '甜奶茶', 'negated': True,
                 'time': None, 'source_ids': ['e2'], 'core': True}]},
     {'id': 'm_stack', 'weight': 70, 'visibility': 'shared',

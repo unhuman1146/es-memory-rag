@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 
 from .rerank import LexicalReranker
 
@@ -108,12 +109,14 @@ class RAGAdapter:
         phash = projection_hash(text)
 
         existing = self.store.chunks_of(memory_id)
-        reused = bool(existing) and existing[0].get('projection_hash') == phash
+        reused = (bool(existing) and existing[0].get('projection_hash') == phash
+                  and [c['text'] for c in existing] == chunks)
         if reused:
             vectors = [c['vector'] for c in existing]
             chunks = [c['text'] for c in existing]
         else:
             if not chunks:
+                self.store.delete(memory_id)
                 return {'ok': True, 'memory_id': memory_id, 'revision': revision, 'chunks': 0,
                         'reused_embedding': False, 'embedded': 0}
             vectors = self.embedding.embed(chunks)
@@ -167,7 +170,11 @@ class RAGAdapter:
                 # truth, so its projection must not be served.
                 if self.engine is not None:
                     continue
-                weight = float((cand.get('metadata') or {}).get('weight') or 0.0)
+                meta = cand.get('metadata') or {}
+                if meta.get('visibility', 'shared') != 'shared' and (
+                        not requester or meta.get('owner') != requester):
+                    continue
+                weight = float(meta.get('weight') or 0.0)
 
             relevance = float(cand['relevance'])
             if self.min_relevance is not None and relevance < self.min_relevance:
@@ -198,7 +205,15 @@ class RAGAdapter:
 
         documents = [c.get('text', '') for c in candidates]
         try:
-            ranked = self.reranker.rerank(query, documents)
+            ranked = list(self.reranker.rerank(query, documents))
+            if not ranked:
+                raise ValueError('reranker returned no results for nonempty candidates')
+            for item in ranked:
+                index, score = item['index'], item['score']
+                if (type(index) is not int or not 0 <= index < len(candidates)
+                        or type(score) not in (int, float) or not math.isfinite(score)
+                        or not 0 <= score <= 1):
+                    raise ValueError('reranker must return valid indices and finite scores in 0..1')
         except Exception as exc:  # a broken reranker must not be silent
             ordered = sorted(candidates, key=lambda c: c.get('score', 0.0), reverse=True)
             return {'status': 'degraded', 'candidates': ordered,

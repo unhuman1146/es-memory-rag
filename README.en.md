@@ -2,6 +2,8 @@
 
 [中文](README.md) | **English**
 
+**Current version: 1.4.0a2. Feature scope is frozen; experimental options remain off by default.**
+
 Give your Agent's memory a **lifecycle** instead of letting it pile up.
 
 This is a Skill package for agents that need long-term memory. It turns an
@@ -73,12 +75,13 @@ python scripts/memory_engine.py --db demo.db outbox
 python scripts/memory_engine.py presets
 python scripts/memory_engine.py --db demo.db --preset 请你慢一点遗忘我 init
 
-# tests: 198 in total
+# tests: 227 in total
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
 python scripts/test_adapter.py
 python scripts/test_chat_path.py
 python scripts/test_slow_forget.py
+python scripts/test_release.py
 ```
 
 Requires Python 3.11+, **standard library only** — no third-party dependencies.
@@ -108,7 +111,7 @@ es-memory-rag/
 │   ├── demo_live_rag.py    live acceptance script (needs a key, not in CI)
 │   ├── demo_live_injection.py  live acceptance of the injection path (needs a key, not in CI)
 │   ├── demo_slow_forget.py threshold calibration for the slow-forget presets (needs a key, not in CI)
-│   └── test_*.py           198 tests
+│   └── test_*.py           227 tests
 ├── adapters/        reference adapter (embedding / vector store / rerank / contract / injection path / outbox)
 └── assets/
     ├── config.example.json
@@ -141,10 +144,7 @@ cite a default as a conclusion**:
 - **Uncalibrated engineering defaults**: the six λ rates, the 60/30 compression
   thresholds, the 20 % daily deletion probability, and every emotion parameter.
 
-The 198 tests are **offline unit tests**. They prove the reference engine, the
-reference adapter, the proactive injection path and the slow-forget presets
-behave as specified. They do **not** prove that your RAG or your 02:00 job is
-live. `python scripts/demo_live_rag.py` (retrieval),
+The package contains 227 offline unit tests. All six suites passed on Windows with Python 3.11.9. Passing these tests does **not** prove that your RAG or your 02:00 job is live. `python scripts/demo_live_rag.py` (retrieval),
 `python scripts/demo_live_injection.py` (injection) and
 `python scripts/demo_slow_forget.py` (threshold calibration for the slow-forget
 presets) run the real thing — all three need an embedding credential and network

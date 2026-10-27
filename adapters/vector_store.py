@@ -24,6 +24,11 @@ def _unpack(blob):
 
 
 def cosine(a, b):
+    if len(a) != len(b):
+        raise ValueError('embedding dimension mismatch; rebuild the index with the current model')
+    if not all(math.isfinite(float(x)) for x in a) or not all(
+            math.isfinite(float(x)) for x in b):
+        raise ValueError('embedding contains non-finite values')
     dot = 0.0
     na = 0.0
     nb = 0.0
@@ -59,6 +64,14 @@ CREATE INDEX IF NOT EXISTS chunks_by_memory ON chunks(memory_id);
 
     def upsert(self, memory_id, revision, chunks, vectors, metadata=None, projection_hash=''):
         """Replace every chunk of this memory with the new revision."""
+        chunks, vectors = list(chunks), list(vectors)
+        if len(chunks) != len(vectors):
+            raise ValueError('embedding batch count does not match chunk count')
+        if vectors:
+            dim = len(vectors[0])
+            if not dim or any(len(v) != dim or not all(math.isfinite(float(x)) for x in v)
+                              for v in vectors):
+                raise ValueError('invalid or inconsistent embedding dimensions/values')
         metadata = metadata or {}
         now = time.time()
         with self.db:

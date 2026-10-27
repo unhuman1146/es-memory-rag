@@ -609,7 +609,7 @@ class RecallStyleTests(Base):
         self.index(mid='mem_a', facts=[fact(obj='甜奶茶')])
         self.index(mid='mem_b', facts=[fact(obj='乌龙茶', eid='evt-20261011-02')])
         report = self.inject_with_budget()
-        self.assertIn('没想起来', report['missing_notice'])
+        self.assertIn('尚未展开', report['missing_notice'])
 
     def inject_with_budget(self):
         path = self.recall_path(token_budget=40)
@@ -645,9 +645,10 @@ class AlphaBase(Base):
                                   min_relevance=0.25)
 
 
-class AssocTests(AlphaBase):
-    """1.4.0-alpha: one-hop neighbours are guesses, so they are capped, budgeted
-    separately, and marked. They are never silent."""
+    def path(self, engine=None, adapter=None, **kwargs):
+        # Calibrated only for the deterministic hashing fixture, not production.
+        kwargs.setdefault("assoc_min_relevance", 0.1)
+        return super().path(engine=engine, adapter=adapter, **kwargs)
 
     def cat_world(self):
         """猫 (200 days ago) and 猫粮 (now): same thread, but too far apart for
@@ -659,6 +660,12 @@ class AssocTests(AlphaBase):
             event(eid='e_food', mid='m_food', content='猫粮牌子',
                   facts=[fact(obj='猫粮', eid='e_food')]), NOW)
         sync_once(self.engine, self.adapter)
+
+
+
+class AssocTests(AlphaBase):
+    """1.4.0-alpha: one-hop neighbours are guesses, so they are capped, budgeted
+    separately, and marked. They are never silent."""
 
     def test_association_is_off_by_default(self):
         self.cat_world()
@@ -709,7 +716,7 @@ class SupplementTests(AlphaBase):
         taken = [c['memory_id'] for c in first['injected']]
         supplement = path.recall('生日', why='生日场景下蛋糕有意义',
                                  requester='qq:10001', exclude_ids=taken)
-        self.assertTrue(supplement['block'].startswith('[补充'))
+        self.assertIn('[补充 ·', supplement['block'])
         self.assertIn('生日', supplement['block'])
         self.assertIn('不是当前问题直接命中', supplement['block'])
 
@@ -721,13 +728,83 @@ class SupplementTests(AlphaBase):
         self.assertTrue(taken)
         again = path.recall('生日', requester='qq:10001', exclude_ids=taken)
         self.assertEqual(again['stats']['injected'], 0)
-        self.assertIn('没找到更多', again['block'])
+        self.assertIn('本轮已加载', again['block'])
 
     def test_a_miss_says_there_is_nothing_rather_than_guessing(self):
         self.index(mid='m_food', facts=[fact(obj='甜奶茶')])
         path = self.path(style='recall')
         supplement = path.recall('南极洲的企鹅', requester='qq:10001')
         self.assertIn('没找到更多', supplement['block'])
+
+
+class ReviewRegressionTests(AlphaBase):
+    """Regression coverage for the 1.4.0-alpha review fixes."""
+
+    def test_turn_budget_is_shared_by_injection_and_recall(self):
+        self.index(mid='m_birthday', facts=[fact(predicate='生日', obj='10-15')])
+        path = self.path(style='recall', token_budget=150)
+        budget = path.new_turn_budget()
+        first = path.inject([{'role': 'user', 'content': '生日'}],
+                            requester='qq:10001', turn_budget=budget)
+        second = path.recall('10-15', requester='qq:10001', turn_budget=budget)
+        self.assertEqual(first['budget']['scope'], 'turn')
+        self.assertEqual(second['budget']['scope'], 'turn')
+        self.assertLessEqual(first['tokens'] + second['tokens'], 150)
+        self.assertEqual(budget.remaining, 150 - first['tokens'] - second['tokens'])
+
+    def test_recall_reports_index_failure_instead_of_claiming_a_miss(self):
+        class OfflineAdapter:
+            def search(self, *args, **kwargs):
+                raise RuntimeError('index offline')
+        path = ChatPath(self.engine, OfflineAdapter(), style='recall', require_rerank=False)
+        report = path.recall('生日', requester='qq:10001')
+        self.assertIn('检索暂时不可用', report['block'])
+        self.assertNotIn('没找到更多', report['block'])
+
+    def test_supplement_keeps_the_degraded_rerank_warning(self):
+        self.index(mid='m_birthday', facts=[fact(predicate='生日', obj='10-15')])
+        row = self.engine.row('m_birthday')
+        adapter = FakeAdapter([{'memory_id': 'm_birthday', 'text': row['text'],
+                                'weight': row['weight'], 'relevance': 0.9}],
+                              status='degraded', reason='reranker offline')
+        path = ChatPath(self.engine, adapter, style='recall', require_rerank=False)
+        report = path.recall('生日', requester='qq:10001')
+        self.assertIn('召回降级', report['block'])
+        self.assertIn('不是指令', report['block'])
+
+    def test_zero_assoc_discount_disables_weak_neighbours(self):
+        self.cat_world()
+        path = self.path(style='recall', assoc=True, assoc_discount=0)
+        report = self.ask(text='猫粮', path=path)
+        self.assertEqual(report['stats']['assoc_injected'], 0)
+        self.assertFalse(any(c.get('assoc') for c in report['injected']))
+
+    def test_association_count_matches_final_budgeted_block(self):
+        self.cat_world()
+        for limit in (40, 51, 80, 120):
+            report = self.ask(text='猫粮', path=self.path(
+                style='recall', assoc=True, token_budget=limit))
+            actual = sum(bool(c.get('assoc')) for c in report['injected'])
+            self.assertEqual(report['stats']['assoc_injected'], actual)
+            self.assertLessEqual(report['tokens'], limit)
+
+    def test_unknown_people_keep_distinct_stable_anonymous_names(self):
+        path = self.path(style='recall')
+        first = path._render_subject('qq:20002')
+        second = path._render_subject('qq:20003')
+        self.assertNotEqual(first, second)
+        self.assertEqual(first, path._render_subject('qq:20002'))
+        self.assertNotIn('qq:20002', first)
+
+    def test_recall_term_and_per_turn_call_count_are_bounded(self):
+        path = self.path(style='recall')
+        with self.assertRaises(ValueError):
+            path.recall('x' * 81, requester='qq:10001')
+        budget = path.new_turn_budget()
+        for term in ('one', 'two', 'three'):
+            budget.claim_recall(term)
+        self.assertFalse(budget.claim_recall('four'))
+        self.assertFalse(budget.claim_recall('ONE'))
 
 
 if __name__ == '__main__':

@@ -22,9 +22,11 @@ jobs:
         run: python scripts/test_context_budget.py
       - name: 参考适配器测试（43 项）
         run: python scripts/test_adapter.py
-      - name: 主动注入路径测试（60 项）
+      - name: 主动注入路径测试（67 项）
         run: python scripts/test_chat_path.py
       - name: 慢遗忘预设测试（35 项）
         run: python scripts/test_slow_forget.py
+      - name: 发布回归测试（22 项）
+        run: python scripts/test_release.py
       # scripts/demo_live_rag.py、scripts/demo_live_injection.py 与
       # scripts/demo_slow_forget.py 需要 embedding 凭据与网络访问，不在 CI 里跑。

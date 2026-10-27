@@ -417,6 +417,8 @@ CREATE TABLE IF NOT EXISTS audit(
                     curve, profile = action.get('curve','fact'), action.get('profile','standard')
                     if curve not in self.cfg['rates_per_hour'] or profile not in self.cfg['profiles']:
                         raise ValueError('unknown curve/profile')
+                    if profile == 'permanent':
+                        raise ValueError('permanent protection requires set_weight_trusted()')
                     visibility = event.get('visibility', 'shared')
                     owner = event.get('sender_id', '')
                     if visibility == 'private' and not owner:
@@ -462,9 +464,12 @@ CREATE TABLE IF NOT EXISTS audit(
                         charge += self.cfg['emotion']['remind_recharge'] * (original - charge)
                         emotion['affect']['last_evoked_at'] = settle_at
                     emotion['affect'].update(charge=min(1.0, max(0.0, charge)), updated_at=settle_at)
+                    ceiling = (self.cfg['max_weight'] if row['weight'] >= self.cfg['protected_weight']
+                               or row['pinned'] or row['profile'] == 'permanent'
+                               else self.cfg['protected_weight'] - 1)
                     self.db.execute('''UPDATE memories SET weight=?,last_decay=?,revision=revision+1,
                         deleted_at=NULL,source_ids=?,emotion=? WHERE id=?''',
-                        (min(self.cfg['max_weight'], decayed(row,now,self.cfg)+boost), settle_at,
+                        (min(ceiling, decayed(row,now,self.cfg)+boost), settle_at,
                          json.dumps(sources), dump_emotion(emotion), mid))
                 elif action['kind'] == 'appraise':
                     # L3: a new human reinterpretation. It creates a revision and
@@ -522,14 +527,14 @@ CREATE TABLE IF NOT EXISTS audit(
         if (type(weight) not in (int, float) or not math.isfinite(weight)
                 or not 0 <= weight <= self.cfg['max_weight']):
             raise ValueError('invalid weight')
-        row = self.row(mid)
-        if not row or row['purged'] or row['deleted_at'] is not None:
-            raise ValueError('no live memory: ' + str(mid))
-        tier = tier_for(weight, self.cfg, row['pinned'])
         # `last_decay` moves with the weight: the new value is authoritative as
         # of now, so the next settlement must not re-decay it from an old point.
         self.db.execute('BEGIN IMMEDIATE')
         try:
+            row = self.row(mid)
+            if not row or row['purged'] or row['deleted_at'] is not None:
+                raise ValueError('no live memory: ' + str(mid))
+            tier = tier_for(weight, self.cfg, row['pinned'])
             self.db.execute('''UPDATE memories SET weight=?,tier=?,text=?,last_decay=?,
                 revision=revision+1 WHERE id=?''',
                 (float(weight), tier,
@@ -621,7 +626,8 @@ CREATE TABLE IF NOT EXISTS audit(
         a user asking about their own past always gets L1 back."""
         now = time.time() if now is None else now
         row = self.row(mid)
-        if not row:
+        if (not row or row['deleted_at'] is not None or row['purged']
+                or row['profile'] == 'archived'):
             return False
         state = emotion_state(row)
         snapshot = state['snapshot'] or {}

@@ -16,6 +16,14 @@ from __future__ import annotations
 import json
 
 
+def _confirmed(outcome):
+    if outcome is True:
+        return {}
+    if not isinstance(outcome, dict) or outcome.get('ok') is not True:
+        raise RuntimeError('index operation did not confirm success')
+    return outcome
+
+
 def _metadata_from_row(row, payload):
     meta = {
         'memory_id': row['id'],
@@ -69,7 +77,7 @@ def sync_once(engine, adapter, limit=100):
 
             # 2. The memory is gone from the authoritative store: drop its vectors.
             if current is None:
-                adapter.delete(memory_id)
+                _confirmed(adapter.delete(memory_id))
                 engine.acknowledge(event_id)
                 report['acked'] += 1
                 report['items'].append({'event_id': event_id, 'memory_id': memory_id,
@@ -80,7 +88,7 @@ def sync_once(engine, adapter, limit=100):
                     or current.get('profile') == 'archived')
             if operation == 'delete' or gone:
                 # 3. A real delete removes every chunk of this memory.
-                adapter.delete(memory_id)
+                _confirmed(adapter.delete(memory_id))
                 engine.acknowledge(event_id)
                 report['acked'] += 1
                 report['items'].append({'event_id': event_id, 'memory_id': memory_id,
@@ -89,8 +97,8 @@ def sync_once(engine, adapter, limit=100):
 
             # 4. A real upsert really embeds and writes.
             text = current.get('text') or payload.get('text') or ''
-            outcome = adapter.upsert(memory_id, int(current['revision']), text,
-                                      _metadata_from_row(current, payload))
+            outcome = _confirmed(adapter.upsert(memory_id, int(current['revision']), text,
+                                               _metadata_from_row(current, payload)))
             engine.acknowledge(event_id)
             report['acked'] += 1
             report['items'].append({'event_id': event_id, 'memory_id': memory_id,

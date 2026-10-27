@@ -25,6 +25,7 @@ knowledge, not from the store. ``scripts/demo_140_alpha.py`` shows both sides.
 from __future__ import annotations
 
 import json
+import math
 
 DEFAULT_WINDOW_DAYS = 45
 MIN_TOKEN_LEN = 2
@@ -68,16 +69,16 @@ def _live_ids(engine, requester):
     rows = engine.db.execute(
         """SELECT id FROM memories
            WHERE deleted_at IS NULL AND purged=0 AND profile!='archived'
-             AND (visibility='shared' OR owner=?)
+             AND (visibility='shared' OR (visibility='private' AND owner=? AND ?!=''))
            ORDER BY last_decay DESC LIMIT ?""",
-        (requester or '', MAX_SCAN)).fetchall()
+        (requester or '', requester or '', MAX_SCAN)).fetchall()
     return [r[0] for r in rows]
 
 
 def _topic_overlap(a, b):
     """Shared object string. Equality needs two characters, containment one."""
-    for left in a:
-        for right in b:
+    for left in sorted(a):
+        for right in sorted(b):
             if left == right and len(left) >= MIN_TOKEN_LEN:
                 return left
             if len(left) < len(right) and left in right and len(right) >= MIN_TOKEN_LEN:
@@ -98,12 +99,18 @@ def neighbors(engine, seed_ids, requester='', limit=2, window_days=DEFAULT_WINDO
     seeds = [sid for sid in (seed_ids or []) if sid]
     if not seeds or engine is None:
         return []
+    if not math.isfinite(window_days) or window_days <= 0:
+        raise ValueError('association window must be finite and positive')
     exclude = set(exclude or []) | set(seeds)
 
     seed_meta = {}
     for sid in seeds:
         row = engine.row(sid)
-        if row is not None:
+        if (row is not None and row.get('deleted_at') is None and not row.get('purged')
+                and row.get('profile') != 'archived'
+                and (row.get('visibility') == 'shared'
+                     or (row.get('visibility') == 'private' and requester
+                         and row.get('owner') == requester))):
             seed_meta[sid] = {'events': _events(engine, _source_ids(row)),
                               'objects': _objects(row),
                               'sources': set(_source_ids(row))}
@@ -133,15 +140,13 @@ def neighbors(engine, seed_ids, requester='', limit=2, window_days=DEFAULT_WINDO
                         days = abs(a['at'] - b['at']) / 86400.0
                         if days <= window_days:
                             strength = round(1.0 - days / float(window_days), 3)
-                            cand = (max(0.05, strength), 'conversation',
+                            edge = (max(0.05, strength), 'conversation',
                                     'same thread, %.0f days apart' % days)
-                            break
-                    if cand:
-                        break
-                if cand is None:
-                    token = _topic_overlap(meta['objects'], mine_objects)
-                    if token:
-                        cand = (0.6, 'topic', 'shared topic 「%s」' % token)
+                            if cand is None or edge[0] > cand[0]:
+                                cand = edge
+                token = _topic_overlap(meta['objects'], mine_objects)
+                if token and (cand is None or cand[0] < 0.6):
+                    cand = (0.6, 'topic', 'shared topic 「%s」' % token)
             if cand and (best is None or cand[0] > best[0]):
                 best = cand
         if best:

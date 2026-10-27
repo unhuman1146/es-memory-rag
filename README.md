@@ -3,8 +3,10 @@
 [中文](README.md) | **[English](README.en.md)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.3.1-5b8c7a)](https://github.com/unhuman1146/es-memory-rag/releases)
-[![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-198%20%E9%A1%B9%E5%85%A8%E8%BF%87-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.4.0a2-orange)](https://github.com/unhuman1146/es-memory-rag/releases)
+[![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-227%20%E9%A1%B9-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)
+
+**当前版本：1.4.0a2。新增功能在此版本冻结，现有实验开关默认关闭。**
 
 把用户的 ESDM 记忆曲线接进真正的 RAG，并让**独立仓管**维护记忆生命周期。
 主聊天只使用按当前话题主动注入的事实投影，不承担实时整理。
@@ -51,12 +53,13 @@ python scripts/memory_engine.py --db demo.db outbox
 python scripts/memory_engine.py presets
 python scripts/memory_engine.py --db demo.db --preset 请你慢一点遗忘我 init
 
-# 测试：共 198 项
+# 测试：共 227 项
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
 python scripts/test_adapter.py
 python scripts/test_chat_path.py
 python scripts/test_slow_forget.py
+python scripts/test_release.py
 ```
 
 需要 Python 3.11+，**零第三方依赖**（仅标准库）。
@@ -94,7 +97,7 @@ es-memory-rag/
 │   ├── demo_live_rag.py    真机验收脚本（需 key，不在 CI）
 │   ├── demo_live_injection.py  主动注入真机验收（需 key，不在 CI）
 │   ├── demo_slow_forget.py 慢遗忘阈值标定与真机验收（需 key，不在 CI）
-│   └── test_*.py           198 项测试
+│   └── test_*.py           227 项测试
 ├── adapters/        参考适配器（embedding / 向量库 / rerank / 契约 / 主动注入 / outbox 消费）
 └── assets/
     ├── config.example.json
@@ -119,8 +122,7 @@ es-memory-rag/
 - **已实测**（某商用长上下文接口，温度 0，合计 34 次调用）：tokenizer 系数 1 token ≈ 1.5 汉字；单针召回 12/12；语义干扰 15/15 严格正确、误取 0；延迟 2.9–21.6s 且不随长度增长
 - **未标定的工程默认值**：六档 λ、60/30 压缩边界、20% 日删除概率、情绪参数
 
-另外，本包的 198 项测试是**离线单测**：它们证明参考引擎、参考适配器、主动注入路径与慢遗忘预设的
-行为符合规范，**不证明**你的线上 RAG 或凌晨调度已经生效。要看真机跑通的样子，用
+本包共有 227 项离线单测。本次六组测试在 Windows / Python 3.11.9 下全部通过；通过这些测试也**不证明**线上 RAG 或凌晨调度已经生效。要看真机跑通的样子，用
 `python scripts/demo_live_rag.py`（检索层）、`python scripts/demo_live_injection.py`
 （注入层）或 `python scripts/demo_slow_forget.py`（慢遗忘阈值标定），三者都需要 embedding 凭据与网络，不在 CI。
 

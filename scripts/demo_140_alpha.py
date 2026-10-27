@@ -1,4 +1,4 @@
-"""1.4.0-alpha offline demo: does the memory block read like memory?
+"""1.4.0a2 offline demo: does the memory block read like memory?
 
 Four scenarios, no API key, no network:
 
@@ -73,7 +73,7 @@ class KeywordReranker:
         scored = []
         for index, doc in enumerate(documents):
             hits = sum(1 for ch in terms if ch in doc)
-            scored.append({'index': index, 'score': float(hits)})
+            scored.append({'index': index, 'score': hits / max(1, len(terms))})
         scored.sort(key=lambda item: (-item['score'], item['index']))
         return scored
 
@@ -131,11 +131,10 @@ def main():
         for line in archive.render(cands, fake).splitlines():
             print('    ' + line)
         fake_recall = {'missing_notice': recall._missing(2), 'rerank': {'status': 'ok'}}
-        print('  recall（1.4.0-alpha，像记忆）:')
+        print('  recall（1.4.0a2，像记忆）:')
         for line in recall.render(cands, fake_recall).splitlines():
             print('    ' + line)
-        print('    （括注里的「时间不明」指「这件事是何时记下的不清楚」，')
-        print('      不是事实本身的时间 —— 不确定性必须留着，但不能长得像档案签条）')
+        print('    （括注表示事实发生时间；archive 风格中的记录日期是系统收录时间）')
 
         # ---------------------------------------------------------------- 2
         rule('2. 弱相关预注入 · 成功例：猫粮 -> 养了只猫（跨对话、间隔 109 天，只能靠共享词元）')
@@ -167,14 +166,15 @@ def main():
                         if c.get('assoc')) or '（无）')
 
         # ---------------------------------------------------------------- 4
-        rule('4. 推理触发的二次注入：CoT 想到「生日」，由宿主调 recall()')
+        rule('4. 结构化补充检索：宿主收到「生日」话题请求后调用 recall()')
+        turn_budget = path.new_turn_budget()
         base = path.inject([{'role': 'user', 'content': '我想吃蛋糕'}],
-                           requester=VIEWER, now=NOW)
+                           requester=VIEWER, now=NOW, turn_budget=turn_budget)
         already = [c['memory_id'] for c in base['injected']]
         print('  首轮已注入: %s' % (already or '(无)'))
-        print('  CoT 尾部（宿主解析出来的）: {"enough": false, "want": ["生日"]}')
+        print('  宿主收到的结构化补充请求: {"need_more": true, "terms": ["生日"]}')
         supplement = path.recall('生日', why='生日场景下蛋糕有意义',
-                                 requester=VIEWER, now=NOW, exclude_ids=already)
+                                 requester=VIEWER, now=NOW, exclude_ids=already, turn_budget=turn_budget)
         for line in (supplement['block'] or '(空)').splitlines():
             print('    ' + line)
         print('    [tokens=%s injected=%s]' % (supplement['tokens'],
@@ -183,13 +183,13 @@ def main():
         # ---------------------------------------------------------------- 5
         rule('5. 这份 demo 能证明什么、不能证明什么')
         print('  能证明:')
-        print('    · 同一批事实可以渲染成两种语气，默认行为一个字没改（archive 仍是默认）')
+        print('    · 同一批事实可以渲染成两种语气，archive 仍是默认渲染；本版另有正确性修复')
         print('    · 结构边能从库里派生出一跳邻居，且邻居有独立预算与「顺带想到」标记')
         print('    · 二次注入能带来源标记，不会被当成当前问题的直接命中')
         print('  不能证明（需要真机与标注样本）:')
         print('    · 「像记忆」是否真的降低了出戏感 —— 这要人来评，不能自证')
         print('    · 预注入的噪声率 —— 本 demo 里 1 条有用 1 条噪声，样本量 1，不作结论')
-        print('    · 语义跳跃的联想 —— 蛋糕→生日这条永远抓不到，必须靠 CoT want')
+        print('    · 语义跳跃的联想 —— 蛋糕→生日这条永远抓不到，由宿主校验后通过结构化补充请求触发')
     finally:
         store.close()
         engine.close()

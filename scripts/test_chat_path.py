@@ -560,5 +560,175 @@ class PresetCalibrationTests(Base):
         self.assertEqual(path.min_relevance, 0.7)
 
 
+class RecallStyleTests(Base):
+    """1.4.0-alpha: the same facts, rendered as memory instead of as a record.
+
+    ``archive`` stays the default; these tests pin what ``recall`` changes and
+    what it must not change (negation, uncertainty, the missing notice).
+    """
+
+    def recall_path(self, **kwargs):
+        kwargs.setdefault('style', 'recall')
+        return self.path(**kwargs)
+
+    def test_the_viewer_is_spoken_to_in_the_second_person(self):
+        self.index(facts=[fact(obj='甜奶茶')])
+        report = self.ask(path=self.recall_path(viewer='qq:10001'))
+        self.assertIn('你喜欢甜奶茶', report['block'])
+
+    def test_a_known_third_party_renders_as_the_alias(self):
+        self.index(mid='m_hotpot', facts=[fact(subject='qq:20002', obj='火锅')])
+        report = self.ask(text='火锅',
+                          path=self.recall_path(person_names={'qq:20002': '张三'}))
+        self.assertIn('张三', report['block'])
+        self.assertNotIn('qq:20002', report['block'])
+
+    def test_an_unknown_account_id_degrades_to_a_neutral_word(self):
+        self.index(mid='m_hotpot', facts=[fact(subject='qq:20002', obj='火锅')])
+        report = self.ask(text='火锅', path=self.recall_path())
+        self.assertNotIn('qq:20002', report['block'])
+        self.assertIn('某人', report['block'])
+
+    def test_negation_stays_visible(self):
+        self.index(facts=[fact(predicate='喜欢', negated=True)])
+        report = self.ask(path=self.recall_path(viewer='qq:10001'))
+        self.assertIn('不喜欢', report['block'])
+
+    def test_an_unknown_recording_time_is_admitted(self):
+        self.index(facts=[fact(time=None)])
+        report = self.ask(path=self.recall_path())
+        self.assertIn('时间不明', report['block'])
+
+    def test_the_archive_stamps_are_gone(self):
+        self.index(facts=[fact()])
+        report = self.ask(path=self.recall_path())
+        self.assertNotIn('记录于', report['block'])
+        self.assertNotIn('来源：', report['block'])
+
+    def test_the_missing_notice_reads_as_hesitation(self):
+        self.index(mid='mem_a', facts=[fact(obj='甜奶茶')])
+        self.index(mid='mem_b', facts=[fact(obj='乌龙茶', eid='evt-20261011-02')])
+        report = self.inject_with_budget()
+        self.assertIn('没想起来', report['missing_notice'])
+
+    def inject_with_budget(self):
+        path = self.recall_path(token_budget=40)
+        return path.inject([{'role': 'user', 'content': '奶茶 乌龙茶'}],
+                           requester='qq:10001')
+
+    def test_archive_remains_the_default(self):
+        self.index(facts=[fact()])
+        report = self.ask()
+        self.assertTrue(report['block'].startswith(BLOCK_HEADER))
+        self.assertIn('来源：', report['block'])
+        self.assertNotIn('时间不明', report['block'])
+
+    def test_an_unknown_style_is_rejected_at_construction(self):
+        with self.assertRaises(ValueError):
+            ChatPath(self.engine, self.adapter, style='poetic')
+
+
+class AlphaBase(Base):
+    """Retrieval that can actually miss.
+
+    The stub embedding scores *every* projection against *every* query, so
+    without a relevance floor each candidate becomes a direct hit and a
+    one-hop neighbour can never add anything -- it was already injected.
+    0.25 is calibrated for this stub only; a real deployment calibrates
+    against its own model and corpus.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.adapter = RAGAdapter(HashingEmbedding(dim=1024), self.store,
+                                  engine=self.engine, reranker=self.reranker,
+                                  min_relevance=0.25)
+
+
+class AssocTests(AlphaBase):
+    """1.4.0-alpha: one-hop neighbours are guesses, so they are capped, budgeted
+    separately, and marked. They are never silent."""
+
+    def cat_world(self):
+        """猫 (200 days ago) and 猫粮 (now): same thread, but too far apart for
+        the conversation edge, so only the shared object can link them."""
+        self.engine.process_event(
+            event(eid='e_cat', mid='m_cat', content='养猫',
+                  facts=[fact(obj='猫', eid='e_cat')]), NOW - 200 * 86400)
+        self.engine.process_event(
+            event(eid='e_food', mid='m_food', content='猫粮牌子',
+                  facts=[fact(obj='猫粮', eid='e_food')]), NOW)
+        sync_once(self.engine, self.adapter)
+
+    def test_association_is_off_by_default(self):
+        self.cat_world()
+        report = self.ask(text='猫粮')
+        self.assertEqual(report['stats']['assoc_candidates'], 0)
+        self.assertEqual(report['stats']['assoc_injected'], 0)
+
+    def test_a_shared_object_links_two_memories(self):
+        self.cat_world()
+        report = self.ask(text='猫粮', path=self.path(style='recall', assoc=True))
+        self.assertGreaterEqual(report['stats']['assoc_candidates'], 1)
+        self.assertEqual(report['stats']['assoc_injected'], 1)
+        self.assertIn('顺带想到', report['block'])
+
+    def test_a_neighbour_is_marked_and_sits_after_the_direct_hit(self):
+        self.cat_world()
+        report = self.ask(text='猫粮', path=self.path(style='recall', assoc=True))
+        block = report['block']
+        self.assertLess(block.index('猫粮'), block.index('顺带想到'))
+
+    def test_a_neighbour_cannot_eat_the_main_budget(self):
+        self.cat_world()
+        report = self.ask(text='猫粮',
+                          path=self.path(style='recall', assoc=True, assoc_budget=1))
+        self.assertEqual(report['stats']['assoc_injected'], 0)
+        reasons = [item['reason'] for item in report['omitted']]
+        self.assertIn('assoc_budget', reasons)
+
+    def test_a_gated_neighbour_is_not_admitted(self):
+        self.cat_world()
+        self.engine.db.execute(
+            "UPDATE memories SET emotion=? WHERE id='m_cat'",
+            ('{"sensitive":true,"snapshot":null,"affect":{"charge":0,"updated_at":0},'
+             '"appraisal":{"revision":0,"current":null,"at":null,"evidence":null,"history":[]}}',))
+        self.engine.db.commit()
+        report = self.ask(text='猫粮', path=self.path(style='recall', assoc=True))
+        self.assertEqual(report['stats']['assoc_injected'], 0)
+
+
+class SupplementTests(AlphaBase):
+    """1.4.0-alpha: the second injection of a turn, triggered by reasoning."""
+
+    def test_it_is_marked_as_a_supplement_not_a_direct_hit(self):
+        self.index(mid='m_birthday', facts=[fact(predicate='生日', obj='10-15')])
+        path = self.path(style='recall')
+        first = path.inject([{'role': 'user', 'content': '我想吃蛋糕'}],
+                            requester='qq:10001')
+        taken = [c['memory_id'] for c in first['injected']]
+        supplement = path.recall('生日', why='生日场景下蛋糕有意义',
+                                 requester='qq:10001', exclude_ids=taken)
+        self.assertTrue(supplement['block'].startswith('[补充'))
+        self.assertIn('生日', supplement['block'])
+        self.assertIn('不是当前问题直接命中', supplement['block'])
+
+    def test_it_never_repeats_what_was_already_injected(self):
+        self.index(mid='m_birthday', facts=[fact(predicate='生日', obj='10-15')])
+        path = self.path(style='recall')
+        first = path.inject([{'role': 'user', 'content': '生日'}], requester='qq:10001')
+        taken = [c['memory_id'] for c in first['injected']]
+        self.assertTrue(taken)
+        again = path.recall('生日', requester='qq:10001', exclude_ids=taken)
+        self.assertEqual(again['stats']['injected'], 0)
+        self.assertIn('没找到更多', again['block'])
+
+    def test_a_miss_says_there_is_nothing_rather_than_guessing(self):
+        self.index(mid='m_food', facts=[fact(obj='甜奶茶')])
+        path = self.path(style='recall')
+        supplement = path.recall('南极洲的企鹅', requester='qq:10001')
+        self.assertIn('没找到更多', supplement['block'])
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -2,7 +2,7 @@
 
 > 这是入口文件。一个没有上下文的执行者（人或 agent）读完这一份，按顺序做完六步，就应当得到一套能跑、能自证、能交接的记忆系统。
 >
-> 其他文档是这一份的展开：`references/design.md`（公式与状态机）、`references/integration.md`（接线契约）、`references/state-ledger.md`（状态层四件套，陪伴型必读）、`references/context-budget.md`（总预算两条线）、`references/emotion.md`（情绪三层）、`references/slow-forget.md`（「请你慢一点遗忘我」慢遗忘预设）、`references/evidence.md`（实测数字与未验证边界）、`scripts/memory_engine.py` 与 `scripts/context_budget.py`（参考实现，可对照行为）。
+> 其他文档是这一份的展开：`references/design.md`（公式与状态机）、`references/integration.md`（接线契约）、`references/state-ledger.md`（状态层四件套，陪伴型必读）、`references/context-budget.md`（总预算两条线）、`references/emotion.md`（情绪三层）、`references/slow-forget.md`（「请你慢一点遗忘我」慢遗忘预设）、`references/evidence.md`（实测数字与未验证边界）、`references/recall-style.md`（1.4.0-alpha 的渲染风格与一跳联想）、`scripts/memory_engine.py` 与 `scripts/context_budget.py`（参考实现，可对照行为）。
 
 ## 0. 先判断该不该做
 

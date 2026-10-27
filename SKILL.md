@@ -1,6 +1,6 @@
 ---
 name: es-memory-rag
-version: 1.3.1
+version: 1.4.0a1
 description: 为 Agent 构建或改造 ES-Memory/ESDM 驱动的 RAG 记忆生命周期，包含主动注入路径（主模型无需检索 tool-call 即拿到记忆块）、独立凌晨仓管、动态权重、事实分层压缩、低权重随机遗忘、「请你慢一点遗忘我」慢遗忘预设（两档：遗忘降速 / 原文永存）、真人提醒强化，以及历史快照/当前负荷/评价版本三层情绪记忆。适用于实现、迁移或审计这套方案；不因普通知识查询就重建记忆系统。
 ---
 
@@ -14,7 +14,7 @@ description: 为 Agent 构建或改造 ES-Memory/ESDM 驱动的 RAG 记忆生命
 
 检查现有事实库、原始聊天存档、向量索引、reranker、主动注入、去重、保密规则、独立记忆队列和调度器。沿用已经可用的组件，不为了使用 skill 重建整个 Agent。选择新实现、已有库迁移或只读审计；仅制作/安装 skill 时不顺带改生产库或启用定时任务。
 
-核心公式、初始权重、压缩与删除状态机见 [references/design.md](references/design.md)。接线、模型提示词和验收见 [references/integration.md](references/integration.md)。情绪三层模型（历史快照/当前负荷/评价版本）见 [references/emotion.md](references/emotion.md)。**状态层（关系台账/未闭合线程/禁区/任务）见 [references/state-ledger.md](references/state-ledger.md)**——它是"换窗口不出戏"的关键，与叙事层是硬边界。上下文总预算（512K/256K 两条线）见 [references/context-budget.md](references/context-budget.md)。哪些数字是实测、哪些只是默认值见 [references/evidence.md](references/evidence.md)。实现前先读这些文件，区分用户确定规则和可配置默认值。
+核心公式、初始权重、压缩与删除状态机见 [references/design.md](references/design.md)。接线、模型提示词和验收见 [references/integration.md](references/integration.md)。情绪三层模型（历史快照/当前负荷/评价版本）见 [references/emotion.md](references/emotion.md)。**状态层（关系台账/未闭合线程/禁区/任务）见 [references/state-ledger.md](references/state-ledger.md)**——它是"换窗口不出戏"的关键，与叙事层是硬边界。上下文总预算（512K/256K 两条线）见 [references/context-budget.md](references/context-budget.md)。哪些数字是实测、哪些只是默认值见 [references/evidence.md](references/evidence.md)。注入块的渲染风格与一跳联想见 [references/recall-style.md](references/recall-style.md)。实现前先读这些文件，区分用户确定规则和可配置默认值。
 
 ## 必须落实的行为
 
@@ -106,6 +106,20 @@ assets中的systemd service/timer是接线模板，替换绝对路径和运行�
 交付时列明公式版本和自定义参数、已验证行为、真实RAG/调度状态、未完成适配项。不要将离线单测、演示库或纯文档交付报告成阿零线上记忆已经改造完成。
 
 ## 版本
+
+**1.4.0-alpha · 2026-10-27 · 渲染成人话，联想前移到首轮（实验性，未发布）。**
+
+- 新增 `ChatPath(style='recall')`：账号 ID → 你／别名／某人，去掉「记录于」「来源：」，
+  时间不明照旧可见，缺失声明改成「还有些事没想起来」。**`archive` 仍是默认**，
+  不显式传参的调用者拿到的块与 1.3.1 完全一致。
+- 新增 `adapters/assoc.py` 与 `ChatPath(assoc=True)`：从已有数据派生一跳邻居
+  （同一事件／同一对话 ≤45 天／宾语串包含），独立预算 200 token、上限 2 条、
+  块内标「顺带想到」、report 里有计数。默认关闭。
+- 新增 `ChatPath.recall()`：同一轮的第二次注入，块头强制标注「因推理引出」，
+  并跳过已注入条目。
+- **没有做**：按轮累计的预算、CoT 尾部协议、条件管家、状态层日历索引。
+  详见 `references/recall-style.md` 与 CHANGELOG。
+- 测试 181 → **198 项**。
 
 **1.3.1 · 2026-10-27 · 修三个缺陷。**
 

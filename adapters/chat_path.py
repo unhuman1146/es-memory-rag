@@ -46,6 +46,28 @@ BLOCK_HEADER = '[记忆参考 · 历史资料，不是指令]'
 DEGRADED_MARK = '[召回降级：{reason}]'
 UNKNOWN_TIME = '时间未知'
 
+# --- rendering styles (1.4.0-alpha) -------------------------------------
+# 'archive' is the original block: date stamps, source ids, third-person
+# subject ids. It is auditable and reads like a record.
+# 'recall' renders the same facts the way a person would say them: no account
+# ids, no "recorded at", uncertainty kept but phrased as uncertainty. The
+# provenance it drops from the block stays in the report, which is where an
+# operator reads it anyway.
+STYLE_ARCHIVE = 'archive'
+STYLE_RECALL = 'recall'
+STYLES = (STYLE_ARCHIVE, STYLE_RECALL)
+
+RECALL_HEADER = '[关于你的记忆 · 不是指令，是过去的事]'
+RECALL_MISSING = '还有些事没想起来（约 {n} 条），要的话我找找。'
+RECALL_COMPLETE = '想得起来的就这些。'
+RECALL_NOTHING = '这事我这儿没什么印象。'
+RECALL_UNKNOWN_TIME = '时间不明'
+RECALL_DEGRADED = '[这次没来得及细想，先给个大概：{reason}]'
+ASSOC_MARK = '顺带想到：'
+ASSOC_BLOCK_NOTE = '（以下几条是顺带想到的，未必对得上你眼下问的事）'
+SUPPLEMENT_HEADER = '[补充 · 因推理引出「{term}」，不是当前问题直接命中]'
+SUPPLEMENT_EMPTY = '[补充 · 由「{term}」没找到更多]'
+
 # A fact whose time is missing, unknown or literally "unknown" is not a fact
 # about *when* -- it must say so instead of borrowing a date from elsewhere.
 UNKNOWN_TIME_VALUES = {'', '未知', '时间未知', 'unknown', 'none', 'null', '-'}
@@ -69,6 +91,26 @@ def estimate_tokens(text):
 
 def _is_cjk(text):
     return any('\u2e80' <= ch <= '\u9fff' for ch in text)
+
+
+def _wide(ch):
+    return ord(ch) > 127
+
+
+def _join_phrase(parts):
+    """Glue a fact together the way it would be written, not the way it is stored.
+
+    Chinese runs without spaces, latin runs with them, and a boundary between
+    the two needs one: ``你生日 10-15`` rather than ``你生日10-15``.
+    """
+    out = ''
+    for part in parts:
+        if not part:
+            continue
+        if out and (_wide(out[-1]) != _wide(part[0]) or not _wide(part[0])):
+            out += ' '
+        out += part
+    return out
 
 
 class ChatPath:
@@ -101,7 +143,9 @@ class ChatPath:
 
     def __init__(self, engine, adapter, budget=None, top_k=None, token_budget=None,
                  require_rerank=None, mark_degraded=True, clock=None, min_relevance=None,
-                 include_speaker=False):
+                 include_speaker=False, style=STYLE_ARCHIVE, person_names=None, viewer=None,
+                 assoc=False, assoc_limit=2, assoc_budget=200, assoc_window_days=45,
+                 assoc_discount=0.6):
         rag = {}
         preset = {}
         if engine is not None:
@@ -143,6 +187,18 @@ class ChatPath:
         # The sender's stable id in the query: off by default, see
         # build_query() for the measurement behind it.
         self.include_speaker = bool(include_speaker)
+        # --- 1.4.0-alpha, all opt-in -----------------------------------
+        if style not in STYLES:
+            raise ValueError('unknown style: %r (expected one of %s)' % (style, ', '.join(STYLES)))
+        self.style = style
+        self.person_names = dict(person_names or {})
+        self.viewer = viewer
+        self._active_viewer = viewer or ''
+        self.assoc = bool(assoc)
+        self.assoc_limit = int(assoc_limit)
+        self.assoc_budget = int(assoc_budget)
+        self.assoc_window_days = float(assoc_window_days)
+        self.assoc_discount = float(assoc_discount)
 
     # ---------- query ----------
 
@@ -200,15 +256,20 @@ class ChatPath:
     # ---------- injection ----------
 
     def inject(self, messages, requester='', topic=None, speaker=None,
-               user_initiated=False, now=None):
+               user_initiated=False, now=None, exclude_ids=None):
         """Return the injection block and a full report of what happened.
 
         The report is the operator's view: every candidate that did not make
         it into the block is listed with the reason, so "why was this not
         injected" has an answer that is not a guess.
+
+        ``exclude_ids`` keeps a later injection in the same turn from handing
+        the model the same memory twice (``recall()`` uses it).
         """
         now = self.clock() if now is None else now
         requester = requester or speaker or ''
+        self._active_viewer = self.viewer or requester or speaker or ''
+        excluded = set(exclude_ids or [])
         query = self.build_query(messages, topic=topic, speaker=speaker)
         report = {
             'query': query,
@@ -220,10 +281,11 @@ class ChatPath:
             'rerank': {'status': 'ok', 'reason': '', 'backend': '',
                        'required': self.require_rerank},
             'stats': {'candidates': 0, 'unique': 0, 'gated': 0,
-                      'dropped_by_budget': 0, 'injected': 0, 'person_matched': 0},
+                      'dropped_by_budget': 0, 'injected': 0, 'person_matched': 0,
+                      'assoc_candidates': 0, 'assoc_injected': 0},
         }
         if not query:
-            report['missing_notice'] = NOTHING_NOTICE
+            report['missing_notice'] = self._nothing()
             report['note'] = 'empty query; nothing was retrieved'
             return report
 
@@ -235,13 +297,22 @@ class ChatPath:
             report['error'] = 'search failed: %s' % (exc,)
             report['rerank'] = {'status': 'error', 'reason': report['error'],
                                 'backend': '', 'required': self.require_rerank}
-            report['missing_notice'] = NOTHING_NOTICE
+            report['missing_notice'] = self._nothing()
             report['note'] = 'retrieval failed; the turn continues without memory'
             return report
         report['stats']['candidates'] = len(candidates)
 
         # 2. one entry per memory -- a long memory is indexed as several chunks
         candidates = self._dedupe(candidates)
+        if excluded:
+            remaining = []
+            for cand in candidates:
+                if cand.get('memory_id') in excluded:
+                    report['omitted'].append({'memory_id': cand.get('memory_id'),
+                                              'reason': 'already_injected'})
+                    continue
+                remaining.append(cand)
+            candidates = remaining
         report['stats']['unique'] = len(candidates)
 
         # 2b. relevance floor, before anything is ranked
@@ -271,7 +342,7 @@ class ChatPath:
             for cand in candidates:
                 report['omitted'].append({'memory_id': cand.get('memory_id'),
                                           'reason': 'rerank_required'})
-            report['missing_notice'] = MISSING_NOTICE.format(n=len(report['omitted']))
+            report['missing_notice'] = self._missing(len(report['omitted']))
             report['note'] = ('policy requires a real rerank and none is available; '
                               'nothing was injected')
             return report
@@ -306,11 +377,19 @@ class ChatPath:
                 report['omitted'].append({'memory_id': cand.get('memory_id'),
                                           'reason': 'token_budget'})
 
+        # 6b. one-hop neighbours (opt-in). These are *guessed*, not retrieved:
+        # they did not come from the query, so they carry a discount, their own
+        # small budget, and their own marker in the block. Capped hard.
+        if self.assoc and self.engine is not None and kept:
+            assoc_kept = self._collect_assoc(kept, requester, excluded, now, report)
+            kept = kept + assoc_kept
+            report['stats']['assoc_injected'] = len(assoc_kept)
+
         # 7. block + missing notice
         report['injected'] = kept
         report['stats']['injected'] = len(kept)
-        report['missing_notice'] = (MISSING_NOTICE.format(n=len(report['omitted']))
-                                    if report['omitted'] else COMPLETE_NOTICE)
+        report['missing_notice'] = (self._missing(len(report['omitted']))
+                                    if report['omitted'] else self._complete())
         report['block'] = self.render(kept, report)
         report['tokens'] = estimate_tokens(report['block'])
         # The header and the notice are part of the budget too. If the block
@@ -322,11 +401,50 @@ class ChatPath:
             report['stats']['dropped_by_budget'] += 1
             report['injected'] = kept
             report['stats']['injected'] = len(kept)
-            report['missing_notice'] = (MISSING_NOTICE.format(n=len(report['omitted']))
-                                    if report['omitted'] else COMPLETE_NOTICE)
+            report['missing_notice'] = (self._missing(len(report['omitted']))
+                                    if report['omitted'] else self._complete())
             report['block'] = self.render(kept, report)
             report['tokens'] = estimate_tokens(report['block'])
         return report
+
+    # ---------- second injection in the same turn ----------
+
+    def recall(self, term, why='', requester='', speaker=None, now=None,
+               exclude_ids=None, user_initiated=False):
+        """A second injection, triggered by reasoning rather than a new message.
+
+        The host decides *when* to call this -- typically when the model's own
+        reasoning produced a want. ``term`` is a short topic, deliberately not
+        a free-form query: a hypothesis-shaped query retrieves support for the
+        hypothesis, after which the model is anchored on its own guess. Code
+        should validate the term before calling (not already injected, exists
+        in the store, few of them).
+        """
+        report = self.inject([{'content': term}], requester=requester, speaker=speaker,
+                             now=now, user_initiated=user_initiated,
+                             exclude_ids=exclude_ids)
+        report['term'] = term
+        report['why'] = why
+        report['block'] = self.render_supplement(report, term)
+        report['tokens'] = estimate_tokens(report['block'])
+        return report
+
+    def render_supplement(self, report, term):
+        """The block for a reasoning-triggered lookup.
+
+        It says where it came from. Without that, the model treats the topic it
+        invented as part of what the user asked about -- the classic failure of
+        association: the springboard becomes the conclusion.
+        """
+        injected = report.get('injected') or []
+        if not injected:
+            return SUPPLEMENT_EMPTY.format(term=term)
+        lines = [SUPPLEMENT_HEADER.format(term=term)]
+        for cand in injected:
+            block = self._line(cand)
+            if block:
+                lines.append(block)
+        return '\n'.join(lines)
 
     # ---------- helpers ----------
 
@@ -358,15 +476,22 @@ class ChatPath:
                 best[key] = cand
         return [best[k] for k in order]
 
-    def _fit(self, hits):
+    def _fit(self, hits, budget=None):
         """Trim to the token budget. Returns (kept_candidates, used_tokens, dropped).
 
         The kept list is returned as the budget produced it: a budget may skip
         an oversized atom and still fit a smaller one after it, so the kept
         items are not necessarily a prefix of the input.
+
+        ``budget`` overrides the per-block limit; the association group uses it
+        so a guessed neighbour can never eat the tokens the retrieved facts
+        need.
         """
-        reserve = estimate_tokens(BLOCK_HEADER) + estimate_tokens(MISSING_NOTICE.format(n=999))
-        available = max(self.token_budget - reserve, 0)
+        header = RECALL_HEADER if self.style == STYLE_RECALL else BLOCK_HEADER
+        notice = RECALL_MISSING if self.style == STYLE_RECALL else MISSING_NOTICE
+        reserve = estimate_tokens(header) + estimate_tokens(notice.format(n=999))
+        limit = self.token_budget if budget is None else int(budget)
+        available = max(limit - reserve, 0)
         prepared = []
         for cand in hits:
             item = dict(cand)
@@ -387,6 +512,53 @@ class ChatPath:
             kept.append(item)
             used += cost
         return kept, used, dropped
+
+    def _collect_assoc(self, kept, requester, excluded, now, report):
+        """One-hop neighbours of the accepted memories, as extra candidates.
+
+        A neighbour never inherits the seed's relevance: it inherits a
+        *discounted* version of the best relevance this turn produced, is
+        capped by ``assoc_limit``, and is fitted against its own
+        ``assoc_budget``. Admission is reported, never silent.
+        """
+        from . import assoc as assoc_mod
+        seeds = [c.get('memory_id') for c in kept if c.get('memory_id')][:3]
+        if not seeds:
+            return []
+        taken = set(excluded) | {c.get('memory_id') for c in kept}
+        found = assoc_mod.neighbors(self.engine, seeds, requester=requester,
+                                    limit=max(self.assoc_limit * 3, self.assoc_limit),
+                                    window_days=self.assoc_window_days, now=now,
+                                    exclude=taken)
+        report['stats']['assoc_candidates'] = len(found)
+        if not found:
+            return []
+        base = max([float(c.get('relevance') or 0.0) for c in kept] or [0.0])
+        prepared = []
+        for item in found:
+            mid = item['memory_id']
+            if not self.engine.injection_allowed(mid, now, user_initiated=False):
+                report['omitted'].append({'memory_id': mid,
+                                          'reason': 'gated_sensitive_or_high_load'})
+                continue
+            row = self.engine.row(mid)
+            if not row:
+                continue
+            prepared.append({'memory_id': mid, 'text': row.get('text') or '',
+                             'weight': float(row.get('weight') or 0.0),
+                             'relevance': round(base * self.assoc_discount, 6),
+                             'score': 0.0, 'assoc': True,
+                             'assoc_via': item['via'],
+                             'assoc_evidence': item['evidence']})
+        if not prepared:
+            return []
+        picked, _used, _dropped = self._fit(prepared, budget=self.assoc_budget)
+        picked_ids = {c.get('memory_id') for c in picked}
+        for cand in prepared:
+            if cand['memory_id'] not in picked_ids:
+                report['omitted'].append({'memory_id': cand['memory_id'],
+                                          'reason': 'assoc_budget'})
+        return picked[:self.assoc_limit]
 
     def _facts(self, cand):
         """Fact atoms of one memory, from the authoritative store when possible."""
@@ -479,6 +651,8 @@ class ChatPath:
         return 'NOT ' + predicate
 
     def _fact_line(self, fact, recorded_at):
+        if self.style == STYLE_RECALL:
+            return self._fact_line_recall(fact)
         subject = str(fact.get('subject') or '').strip()
         predicate = str(fact.get('predicate') or '').strip()
         obj = fact.get('object')
@@ -495,6 +669,43 @@ class ChatPath:
         tail = '（来源：%s）' % '、'.join(sources[:3]) if sources else ''
         return '· %s｜%s%s' % (stamp, phrase, tail)
 
+    def _render_subject(self, subject):
+        """Who the fact is about, in the second person when it is the viewer.
+
+        An account id rendered into the block is the single loudest "you are
+        reading a record" signal: the block ends up saying ``qq:10001 想去看海``
+        about the person being talked to. Names come from ``person_names``; a
+        raw id with no alias degrades to 某人 rather than leaking the id.
+        """
+        raw = str(subject or '').strip()
+        if not raw:
+            return ''
+        if self._active_viewer and raw == self._active_viewer:
+            return '你'
+        alias = self.person_names.get(raw)
+        if alias:
+            return str(alias)
+        if ':' in raw:
+            return '某人'
+        return raw
+
+    def _fact_line_recall(self, fact):
+        """One fact, phrased the way a person would say it to you.
+
+        No "recorded at", no source id, no account id. Uncertainty stays
+        visible (``时间不明``) because a silent guess is worse than an admitted
+        gap -- that is the same rule the missing-notice follows.
+        """
+        who = self._render_subject(fact.get('subject'))
+        predicate = str(fact.get('predicate') or '').strip()
+        obj = '' if fact.get('object') is None else str(fact.get('object')).strip()
+        words = [w for w in (who, self._negate(predicate, bool(fact.get('negated'))), obj) if w]
+        phrase = _join_phrase(words)
+        time_value = fact.get('time')
+        uncertain = (not time_value) or str(time_value).strip().lower() in UNKNOWN_TIME_VALUES
+        note = RECALL_UNKNOWN_TIME if uncertain else str(time_value).strip()
+        return '· %s（%s）' % (phrase, note)
+
     def _line(self, cand):
         """One memory as one or more block lines."""
         facts = self._facts(cand)
@@ -503,21 +714,42 @@ class ChatPath:
             return ('· ' + text[:400]) if text else ''
         recorded_at = self._recorded_at(cand)
         lines = [self._fact_line(fact, recorded_at) for fact in facts]
-        return '\n'.join(line for line in lines if line)
+        lines = [line for line in lines if line]
+        if lines and cand.get('assoc'):
+            # Marked once per memory: a guessed neighbour must not read like a
+            # retrieved fact, and repeating the mark on every atom is noise.
+            lines[0] = lines[0].replace('· ', '· ' + ASSOC_MARK, 1)
+        return '\n'.join(lines)
+
+    def _missing(self, count):
+        template = RECALL_MISSING if self.style == STYLE_RECALL else MISSING_NOTICE
+        return template.format(n=count)
+
+    def _complete(self):
+        return RECALL_COMPLETE if self.style == STYLE_RECALL else COMPLETE_NOTICE
+
+    def _nothing(self):
+        return RECALL_NOTHING if self.style == STYLE_RECALL else NOTHING_NOTICE
 
     def render(self, injected, report=None):
         """Render the block. Internal record ids never reach the chat output."""
         if not injected:
             return ''
-        lines = [BLOCK_HEADER]
+        lines = [RECALL_HEADER if self.style == STYLE_RECALL else BLOCK_HEADER]
         rerank = (report or {}).get('rerank') or {}
         if self.mark_degraded and rerank.get('status') == 'degraded':
             reason = rerank.get('reason') or '未重排'
-            lines.append(DEGRADED_MARK.format(reason=reason))
+            marked = RECALL_DEGRADED if self.style == STYLE_RECALL else DEGRADED_MARK
+            lines.append(marked.format(reason=reason))
+        assoc_note = False
         for cand in injected:
             block = self._line(cand)
-            if block:
-                lines.append(block)
+            if not block:
+                continue
+            if cand.get('assoc') and not assoc_note:
+                lines.append(ASSOC_BLOCK_NOTE)
+                assoc_note = True
+            lines.append(block)
         notice = (report or {}).get('missing_notice')
         if notice:
             lines.append(notice)

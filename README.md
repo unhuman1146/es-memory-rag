@@ -3,10 +3,12 @@
 [中文](README.md) | **[English](README.en.md)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.4.0a2-orange)](https://github.com/unhuman1146/es-memory-rag/releases)
-[![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-227%20%E9%A1%B9-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.4.0a3-orange)](https://github.com/unhuman1146/es-memory-rag/releases)
+[![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-249%20%E9%A1%B9-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)
 
-**当前版本：1.4.0a2。新增功能在此版本冻结，现有实验开关默认关闭。**
+**当前版本：1.4.0a3。增加按需驻留与主动换页；既有实验开关默认关闭。**
+
+α3 的上下文接线入口：[工作集规范](references/working-set.md)。500 条是滚动候选池；平时少量驻留，任务需要才扩容，结束后回落。此包用于搭建或改造记忆库；复制 skill 不会自动改造宿主的聊天循环。
 
 把用户的 ESDM 记忆曲线接进真正的 RAG，并让**独立仓管**维护记忆生命周期。
 主聊天只使用按当前话题主动注入的事实投影，不承担实时整理。

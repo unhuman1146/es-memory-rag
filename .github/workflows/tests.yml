@@ -30,3 +30,8 @@ jobs:
         run: python scripts/test_release.py
       # scripts/demo_live_rag.py、scripts/demo_live_injection.py 与
       # scripts/demo_slow_forget.py 需要 embedding 凭据与网络访问，不在 CI 里跑。
+
+      - name: 按需驻留与主动换页回归（22 项）
+        run: python scripts/test_context_pager.py
+      - name: 主动换页离线演示
+        run: python scripts/demo_paging.py

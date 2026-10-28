@@ -14,4 +14,4 @@ the environment or from a private config file *outside* the repository and are
 never written into the index, the logs, or a commit.
 """
 
-__all__ = ['embedding', 'vector_store', 'rerank', 'rag_adapter', 'sync']
+__all__ = ['embedding', 'vector_store', 'rerank', 'rag_adapter', 'sync', 'context_pager']

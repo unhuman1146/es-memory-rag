@@ -1,50 +1,37 @@
-# 1.4.0a2 发布检查
+# 1.4.0a3 发布检查
 
-日期：2026-10-27。功能范围在 1.4.0a2 冻结，本轮只做缺陷修复和发布准备。
-检查对象：当前工作副本；基线为用户提供的 1.4.0a1 压缩包及随后 reviewed 修改。
+日期：2026-10-28。底座为 1.4.0a2 发布源码；已逐文件核对用户下载目录的 a2 压缩包，与所用底座一致。
 
-## 结论
+本次按用户新确定的架构增加工作集换页，未继续增加联想或遗忘机制。源码、施工 skill 和接线说明可作为 alpha 包交付。
 
-本次已覆盖范围内未再发现发布阻塞问题，可作为 **alpha 版本**发布。
-本结论不表示所有环境和用法均无 bug，也不把离线测试等同于真实 RAG 接通。
+## 已运行的检查
 
-## 测试
-
-运行环境：Windows，Python 3.11.9。全部使用临时数据库、确定性模型替身和虚拟凭据。
+运行环境：Windows / Python 3.11，临时数据库、离线模型替身；不需要 API key。
 
 | 命令 | 结果 |
 |---|---|
-| `python scripts/test_memory_engine.py` | 43/43 |
-| `python scripts/test_context_budget.py` | 17/17 |
-| `python scripts/test_adapter.py` | 43/43 |
-| `python scripts/test_chat_path.py` | 67/67 |
-| `python scripts/test_slow_forget.py` | 35/35 |
-| `python scripts/test_release.py` | 22/22 |
-| `python scripts/demo_140_alpha.py` | 正常退出，四个演示场景完成 |
+| python scripts/test_memory_engine.py | 43/43 |
+| python scripts/test_context_budget.py | 17/17 |
+| python scripts/test_adapter.py | 43/43 |
+| python scripts/test_chat_path.py | 67/67 |
+| python scripts/test_slow_forget.py | 35/35 |
+| python scripts/test_release.py | 22/22 |
+| python scripts/test_context_pager.py | 22/22 |
 
-合计 **227/227**。CI 已加入六组测试，尚未在 GitHub 上运行。
+合计 **249/249 离线测试通过**。CI 已加入新测试与换页演示，未在 GitHub 上执行。
 
-## 重点覆盖
+新增覆盖：500 条池与实际驻留分离，话题换页，大任务显式扩容及下一轮回落，未落盘数据保护，跨群/私密过滤，同名不同人归属，召回期间权限撤销，状态和必需工具结果超限明确拒绝，多轮无累积，以及真实参考 ChatPath 换页不删除、不强化记忆。
 
-- 同轮主注入与补充调用共享预算；0～160 的多档预算不透支、不重复注入。
-- 索引不可用、重排降级、重复补充请求都有明确状态；report 字段和实际注入数量一致。
-- 重排前与注入前核对权限、墓碑和版本；权限或 revision 在重排期间变化的候选被排除。
-- 私密记忆不能作为无权限的联想 seed；不带权威库时仍执行索引 metadata 的私密过滤。
-- `top_k`、联想条数与子预算生效；重排分数参与最终排序，畸形重排结果降级。
-- 索引失败回执不 ack；空投影清除旧向量；embedding 缺项、维度错误和 NaN 明确报错。
-- 自动强化与 `permanent` intake 不能绕过永久保护管理入口。
-- 既有 3000 条维护回归、情绪快照、去重、压缩、删除回收和慢遗忘预设测试通过。
+## 具体边界
 
-## 当前边界
+- 交付物是施工 skill 与参考组件。没有修改阿零生产服务器，也未宣称 Hermes 的 native transcript / api_content sidecar 已完成换页。
+- 未使用真实 MiniMax / SiliconFlow 接口，没有本次线上 token、费用、延迟或自然度盲评数据。
+- 默认 token 计数仍为估算。模型完整协议、工具 schema 与多模态记账必须由宿主校准；固定开销太大时明确拒绝。
+- 旧 ContextBudget API 保留兼容；α3 接入必须使用新的活动页路径。只升级 skill 文件或增大 SQL LIMIT 不会改变模型侧累积。
+- 工具协议由宿主维护，正在运行的 tool_call/result 不能直接扔进原文分页器后随意删减。
+- 原始记录的 persisted 以及 ACL 是宿主可信输入；模型生成的布尔声明不能作为落盘或权限证据。
+- 默认普通记忆共享、显式保密保留权限；换页不改变权重、情绪、删除计划和仓管调度。
 
-- 未调用真实 embedding／reranker／主聊天模型；真实语料的阈值、噪声率和自然度没有得到本次验证。
-- 未验证线上凌晨调度、生产库迁移或真实宿主的对话循环。包内提供接线契约，宿主需要落实。
-- 预算使用估算器；严格的模型窗口上限须由宿主 tokenizer 校准。没有共享 TurnBudget 时仍按次记账。
-- 缺失提示只描述当前候选，不是全库覆盖率；联想最多扫描 500 条活动候选，不能保证历史全量召回。
-- 普通共享／显式私密的规则和“落库明文”边界保持原有设计；短匿名标签属于伪名，不提供加密保障。
-- 未执行 Linux CI、真实对话盲评和大型向量检索压测。默认关闭联想、默认 archive 渲染。
+## 包装
 
-## 发布内容
-
-源码、配置示例、文档、六组测试和离线演示。排除数据库、运行日志、凭据、缓存和 bytecode。
-发布前请保留版本号 `1.4.0a2`，并以 alpha 身份说明上述边界。
+发布包保留源代码、指南、配置示例、MIT 协议与测试；排除数据库、日志、凭据、运行缓存和 bytecode。MANIFEST.sha256 用于逐文件校验。新演示使用临时 SQLite 原文库验证 normal → large → normal，以及档案完整保留。

@@ -1,0 +1,15 @@
+{
+  "hard_tokens": 262144,
+  "normal_tokens": 32768,
+  "large_tokens": 196608,
+  "output_reserve": 8192,
+  "history_pool": 500,
+  "recent_turns": 12,
+  "normal_history_tokens": 4096,
+  "large_history_tokens": 120000,
+  "normal_memory_tokens": 1200,
+  "large_memory_tokens": 24000,
+  "normal_tool_tokens": 2048,
+  "large_tool_tokens": 16384,
+  "ledger_tokens": 500
+}

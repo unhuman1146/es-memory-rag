@@ -4,6 +4,10 @@
 >
 > 其他文档是这一份的展开：`references/design.md`（公式与状态机）、`references/integration.md`（接线契约）、`references/state-ledger.md`（状态层四件套，陪伴型必读）、`references/context-budget.md`（总预算两条线）、`references/emotion.md`（情绪三层）、`references/slow-forget.md`（「请你慢一点遗忘我」慢遗忘预设）、`references/evidence.md`（实测数字与未验证边界）、`references/recall-style.md`（1.4.0-alpha 的渲染风格与一跳联想）、`scripts/memory_engine.py` 与 `scripts/context_budget.py`（参考实现，可对照行为）。
 
+## α3 上下文接线
+
+已有库只需改造工作集时，保留 S1–S3，按 [working-set.md](references/working-set.md) 接入 ContextPager：上下文只保留当前需要的页，原文与事实留在权威库。旧版预算表只作为兼容路径，不再建议常态累积到 SOFT 才回收。
+
 ## 0. 先判断该不该做
 
 **不要做**，如果满足任意一条：

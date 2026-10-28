@@ -2,7 +2,9 @@
 
 [中文](README.md) | **English**
 
-**Current version: 1.4.0a2. Feature scope is frozen; experimental options remain off by default.**
+**Current version: 1.4.0a3. Demand-paged context working sets; existing experimental options remain off by default.**
+
+See [working-set integration](references/working-set.md). The 500-turn pool is not a residency target: ordinary turns stay small, explicit large tasks can expand, and the next turn defaults back to normal. Installing this construction skill does not patch a host conversation loop.
 
 Give your Agent's memory a **lifecycle** instead of letting it pile up.
 

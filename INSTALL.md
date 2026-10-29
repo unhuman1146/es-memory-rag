@@ -36,7 +36,7 @@ es-memory-rag/
 ├── CHANGELOG.md
 ├── NOTICE.md         ← 第三方声明（本包无第三方代码）
 ├── references/       ← 7 份展开文档
-├── scripts/          ← 参考引擎 + 227 项测试 + 真机验收脚本
+├── scripts/          ← 参考引擎 + 249 项测试 + 真机验收脚本
 ├── adapters/         ← 参考适配器（embedding / 向量库 / rerank / outbox 消费）
 ├── assets/           ← 配置样例、慢遗忘预设、systemd 模板、事件样例
 └── agents/           ← openai.yaml
@@ -206,3 +206,4 @@ python scripts/test_slow_forget.py      # 应输出 Ran 32 tests ... OK
 > systemd 模板（`assets/es-memory-warehouse.service` / `.timer`）**只是模板**，
 > 本包**不会**自动安装任何定时任务。要真让它每天凌晨跑，得自己按
 > [references/integration.md](references/integration.md) 接线。
+

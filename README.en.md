@@ -2,9 +2,9 @@
 
 [中文](README.md) | **English**
 
-**Current version: 1.4.0a3. Demand-paged context working sets; existing experimental options remain off by default.**
+**Current version: 1.4.0.**
 
-See [working-set integration](references/working-set.md). The 500-turn pool is not a residency target: ordinary turns stay small, explicit large tasks can expand, and the next turn defaults back to normal. Installing this construction skill does not patch a host conversation loop.
+**ES-Memory RAG pairs actively injected long-term RAG memory with a heterogeneous, demand-paged context working set.** Recent turns, state, summaries, retrieved memories, and tool results have separate budgets and paging rules. Its biomimetic memory analogy separates working context, durable facts, and state; its emotion model stores an event snapshot, a decaying current charge, and versioned later appraisals. These are engineering models, not claims of biological equivalence. The host must wire the pager into its request loop; installing this skill does not patch conversation history by itself. See [working-set integration](references/working-set.md).
 
 Give your Agent's memory a **lifecycle** instead of letting it pile up.
 
@@ -77,13 +77,14 @@ python scripts/memory_engine.py --db demo.db outbox
 python scripts/memory_engine.py presets
 python scripts/memory_engine.py --db demo.db --preset 请你慢一点遗忘我 init
 
-# tests: 227 in total
+# tests: 249 in total
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
 python scripts/test_adapter.py
 python scripts/test_chat_path.py
 python scripts/test_slow_forget.py
 python scripts/test_release.py
+python scripts/test_context_pager.py
 ```
 
 Requires Python 3.11+, **standard library only** — no third-party dependencies.
@@ -109,11 +110,13 @@ es-memory-rag/
 ├── scripts/
 │   ├── memory_engine.py    reference engine (SQLite transactions, outbox, stable lottery, CAS)
 │   ├── context_budget.py   context assembly and budgeting
+│   ├── demo_paging.py      offline working-set paging demo
+│   └── test_context_pager.py  paging and integration regression tests
 │   ├── presets.py          preset registry and overlay merging
 │   ├── demo_live_rag.py    live acceptance script (needs a key, not in CI)
 │   ├── demo_live_injection.py  live acceptance of the injection path (needs a key, not in CI)
 │   ├── demo_slow_forget.py threshold calibration for the slow-forget presets (needs a key, not in CI)
-│   └── test_*.py           227 tests
+│   └── test_*.py           249 tests
 ├── adapters/        reference adapter (embedding / vector store / rerank / contract / injection path / outbox)
 └── assets/
     ├── config.example.json
@@ -146,7 +149,7 @@ cite a default as a conclusion**:
 - **Uncalibrated engineering defaults**: the six λ rates, the 60/30 compression
   thresholds, the 20 % daily deletion probability, and every emotion parameter.
 
-The package contains 227 offline unit tests. All six suites passed on Windows with Python 3.11.9. Passing these tests does **not** prove that your RAG or your 02:00 job is live. `python scripts/demo_live_rag.py` (retrieval),
+The package contains 249 offline unit tests across seven suites. Passing these tests does **not** prove that your host has wired live RAG, context paging, or its 02:00 job. `python scripts/demo_live_rag.py` (retrieval),
 `python scripts/demo_live_injection.py` (injection) and
 `python scripts/demo_slow_forget.py` (threshold calibration for the slow-forget
 presets) run the real thing — all three need an embedding credential and network
@@ -173,3 +176,4 @@ access, and none of them is part of CI.
 ## License
 
 MIT — see [LICENSE](LICENSE). Third-party notice: [NOTICE.md](NOTICE.md).
+

@@ -3,15 +3,23 @@
 [中文](README.md) | **[English](README.en.md)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.4.0a3-orange)](https://github.com/unhuman1146/es-memory-rag/releases)
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.4.0-blue)](https://github.com/unhuman1146/es-memory-rag/releases)
 [![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-249%20%E9%A1%B9-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)
 
-**当前版本：1.4.0a3。增加按需驻留与主动换页；既有实验开关默认关闭。**
+**当前版本：1.4.0 正式版。**
 
-α3 的上下文接线入口：[工作集规范](references/working-set.md)。500 条是滚动候选池；平时少量驻留，任务需要才扩容，结束后回落。此包用于搭建或改造记忆库；复制 skill 不会自动改造宿主的聊天循环。
+**主打能力：RAG 长期记忆 + 上下文异构换页。** RAG 根据当前话题筛选、重排并主动注入记忆；上下文工作集将近期对话、状态、摘要、记忆和工具结果分区管理，按需换页，避免把整段历史一直累加到模型请求。
 
-把用户的 ESDM 记忆曲线接进真正的 RAG，并让**独立仓管**维护记忆生命周期。
-主聊天只使用按当前话题主动注入的事实投影，不承担实时整理。
+仿生记忆结构是工程类比：短期工作区、长期事实记忆、状态台账分工协作；记忆权重会衰减，事实可压缩，低权重记忆进入受控遗忘。仿生情绪记忆分为事件时的情绪快照、随时间变化的情绪负荷、以及有版本记录的后续评价。它们提供可解释的记忆机制，不宣称复现生物大脑。
+
+```text
+入站消息 ──> 短期上下文工作集 ──超额/话题切换──> 换出旧页，原文留档
+    │                    │
+    └──独立记忆整理线──> 长期事实库/RAG ──当前话题检索与重排──> 主动注入主模型
+                              └──仓管：衰减、压缩、提醒强化、情绪与遗忘
+```
+
+上下文分页器、RAG 适配器和参考记忆引擎均在包内；宿主需接上自己的消息循环、持久化原文、索引、权限和模型接口。复制 Skill 不会自动改变宿主运行架构。α3 的具体接线要求见[工作集规范](references/working-set.md)。
 
 > **给 Agent 用：** 这是一个 Skill 包。把 `es-memory-rag/` 整个目录放进你的 Agent 的 skills 目录即可。
 > 各 Agent 的具体路径、三种常见踩坑与验证方法见 **[INSTALL.md](INSTALL.md)**。
@@ -55,13 +63,14 @@ python scripts/memory_engine.py --db demo.db outbox
 python scripts/memory_engine.py presets
 python scripts/memory_engine.py --db demo.db --preset 请你慢一点遗忘我 init
 
-# 测试：共 227 项
+# 测试：共 249 项
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
 python scripts/test_adapter.py
 python scripts/test_chat_path.py
 python scripts/test_slow_forget.py
 python scripts/test_release.py
+python scripts/test_context_pager.py
 ```
 
 需要 Python 3.11+，**零第三方依赖**（仅标准库）。
@@ -99,7 +108,7 @@ es-memory-rag/
 │   ├── demo_live_rag.py    真机验收脚本（需 key，不在 CI）
 │   ├── demo_live_injection.py  主动注入真机验收（需 key，不在 CI）
 │   ├── demo_slow_forget.py 慢遗忘阈值标定与真机验收（需 key，不在 CI）
-│   └── test_*.py           227 项测试
+│   └── test_*.py           249 项测试
 ├── adapters/        参考适配器（embedding / 向量库 / rerank / 契约 / 主动注入 / outbox 消费）
 └── assets/
     ├── config.example.json
@@ -124,7 +133,7 @@ es-memory-rag/
 - **已实测**（某商用长上下文接口，温度 0，合计 34 次调用）：tokenizer 系数 1 token ≈ 1.5 汉字；单针召回 12/12；语义干扰 15/15 严格正确、误取 0；延迟 2.9–21.6s 且不随长度增长
 - **未标定的工程默认值**：六档 λ、60/30 压缩边界、20% 日删除概率、情绪参数
 
-本包共有 227 项离线单测。本次六组测试在 Windows / Python 3.11.9 下全部通过；通过这些测试也**不证明**线上 RAG 或凌晨调度已经生效。要看真机跑通的样子，用
+本包共有 249 项离线单测。通过离线测试**不证明**宿主已接通真实 RAG、上下文换页或凌晨调度。要看真机跑通的样子，用
 `python scripts/demo_live_rag.py`（检索层）、`python scripts/demo_live_injection.py`
 （注入层）或 `python scripts/demo_slow_forget.py`（慢遗忘阈值标定），三者都需要 embedding 凭据与网络，不在 CI。
 
@@ -149,3 +158,4 @@ es-memory-rag/
 ## 许可
 
 MIT，见 [LICENSE](LICENSE)。第三方声明见 [NOTICE.md](NOTICE.md)。
+

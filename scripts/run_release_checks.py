@@ -1,4 +1,4 @@
-"""Run the offline 1.4.0 acceptance set and report suite counts."""
+"""Run the offline 1.4.1 acceptance set and report suite counts."""
 from pathlib import Path
 import re
 import subprocess
@@ -14,6 +14,7 @@ commands = [
     ("slow_forget", "scripts/test_slow_forget.py"),
     ("release", "scripts/test_release.py"),
     ("context_pager", "scripts/test_context_pager.py"),
+    ("patch_141", "scripts/test_patch_141.py"),
     ("demo_memory", "scripts/demo_140_alpha.py"),
     ("demo_paging", "scripts/demo_paging.py"),
 ]

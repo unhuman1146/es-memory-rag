@@ -37,7 +37,7 @@ python scripts/memory_engine.py --db mem.db init
 python -c "import sqlite3;d=sqlite3.connect('mem.db');print(sorted(r[0] for r in d.execute(\"select name from sqlite_master where type='table'\")),d.execute('pragma journal_mode').fetchone()[0])"
 ```
 
-**完成判据**：输出 `['audit','daily_draws','events','memories','meta','outbox','sqlite_sequence'] wal`（`sqlite_sequence` 是 AUTOINCREMENT 自带的，忽略即可）。
+**完成判据**：输出 `['audit','daily_draws','emotion_residue','events','memories','meta','outbox','sqlite_sequence'] wal`（`sqlite_sequence` 是 AUTOINCREMENT 自带的，忽略即可）。
 
 - 六张业务表不全 → 你用的不是本仓库的建表语句，见第 3 节 DDL。
 - 不是 `wal` → 主读路径会和夜间批写互锁，`PRAGMA journal_mode=WAL` 必须落地。
@@ -314,3 +314,7 @@ CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- lottery_seed /
 4. 未完成的适配项（典型：事实版本管理、情绪估计）。
 5. 数据规模与实测耗时（plan+apply 在多少条上跑多久）。
 6. 已知风险：明文存储、死信未处理、降级路径。
+
+## 1.4.1 升级
+
+旧库采用增量列 / 表迁移；向量索引须补身份并重建。自然遗忘、明确删除和抽象情绪余韵的权限及接线要求见 [升级说明](references/upgrade-1.4.1.md)，不能把过去实验记录当作新版本已实测的证据。

@@ -116,7 +116,7 @@ CREATE INDEX IF NOT EXISTS chunks_by_memory ON chunks(memory_id);
         return int(self.db.execute('SELECT COUNT(*) FROM chunks').fetchone()[0])
 
     def search(self, vector, limit=10, acl_filter=None):
-        """Cosine search. ``acl_filter`` is a coarse pre-filter only.
+        """Cosine chunk search; the adapter requests distinct-memory results.
 
         The authoritative permission check happens in the adapter against the
         memory store, because the index may be stale.
@@ -142,14 +142,24 @@ CREATE INDEX IF NOT EXISTS chunks_by_memory ON chunks(memory_id);
         rows = self.db.execute(sql, args).fetchall()
         scored = []
         for r in rows:
+            metadata = json.loads(r[5] or '{}')
+            identity = acl_filter.get('_embedding_identity')
+            if identity is not None and metadata.get('_embedding_identity') != identity:
+                raise ValueError('embedding identity mismatch or legacy index; rebuild the index with the current model')
             vec = _unpack(r[4])
             scored.append({
                 'memory_id': r[0], 'revision': r[1], 'chunk_index': r[2], 'text': r[3],
-                'metadata': json.loads(r[5] or '{}'), 'projection_hash': r[6],
+                'metadata': metadata, 'projection_hash': r[6],
                 'relevance': cosine(vector, vec),
             })
         scored.sort(key=lambda c: c['relevance'], reverse=True)
-        return scored[:limit] if limit else scored
+        if not acl_filter.get('_distinct_memories'):
+            return scored[:limit] if limit else scored
+        distinct = {}
+        for candidate in scored:
+            distinct.setdefault(candidate['memory_id'], candidate)
+        result = list(distinct.values())
+        return result[:limit] if limit else result
 
     def close(self):
         self.db.close()

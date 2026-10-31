@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import uuid
 
 from .rerank import LexicalReranker
 
@@ -79,7 +80,7 @@ class RAGAdapter:
 
     def __init__(self, embedding, store, engine=None, reranker=None, chunk_chars=400,
                  require_rerank=False, relevance_weight=RELEVANCE_WEIGHT, memory_weight=MEMORY_WEIGHT,
-                 min_relevance=None):
+                 min_relevance=None, embedding_identity=None, search_scan_limit=4096):
         self.embedding = embedding
         self.store = store
         self.engine = engine
@@ -92,6 +93,27 @@ class RAGAdapter:
         # context. The threshold is per model and per corpus -- calibrate it,
         # do not hardcode a vendor's raw score.
         self.min_relevance = min_relevance
+        self.search_scan_limit = max(1, int(search_scan_limit))
+        identity = embedding_identity
+        self._identity_from_client = identity is None and callable(getattr(embedding, 'cache_identity', None))
+        if identity is None and callable(getattr(embedding, 'cache_identity', None)):
+            identity = embedding.cache_identity()
+        if identity is None:
+            # Opaque custom backends remain usable, but cannot claim persistent
+            # cache compatibility across adapter instances. Supply an explicit
+            # identity to opt into safe reuse across restarts.
+            identity = {'provider': 'custom', 'model': 'opaque',
+                        'version': uuid.uuid4().hex, 'dim': getattr(embedding, 'dim', None)}
+        self.embedding_identity = dict(identity)
+        if set(self.embedding_identity) != {'provider', 'model', 'version', 'dim'} or any(
+                not isinstance(self.embedding_identity[k], str) or not self.embedding_identity[k]
+                for k in ('provider', 'model', 'version')):
+            raise ValueError('embedding_identity requires non-secret provider/model/version/dim')
+        dim = self.embedding_identity['dim']
+        if dim is None and embedding_identity is not None:
+            raise ValueError('explicit embedding identity requires a dimension')
+        if dim is not None and (type(dim) is not int or dim <= 0):
+            raise ValueError('embedding identity dimension must be a positive integer')
 
     # ---------- contract ----------
 
@@ -102,6 +124,7 @@ class RAGAdapter:
         projection text did not change and the stored vector was reused --
         a weight-only change must not cost an embedding call.
         """
+        self._refresh_identity()
         metadata = dict(metadata or {})
         metadata.setdefault('memory_id', memory_id)
         metadata['revision'] = revision
@@ -109,7 +132,11 @@ class RAGAdapter:
         phash = projection_hash(text)
 
         existing = self.store.chunks_of(memory_id)
-        reused = (bool(existing) and existing[0].get('projection_hash') == phash
+        reused = (bool(existing) and self.embedding_identity['dim'] is not None
+                  and all(c.get('projection_hash') == phash
+                          and (c.get('metadata') or {}).get('_embedding_identity') == self.embedding_identity
+                          and len(c['vector']) == self.embedding_identity['dim']
+                          for c in existing)
                   and [c['text'] for c in existing] == chunks)
         if reused:
             vectors = [c['vector'] for c in existing]
@@ -120,7 +147,8 @@ class RAGAdapter:
                 return {'ok': True, 'memory_id': memory_id, 'revision': revision, 'chunks': 0,
                         'reused_embedding': False, 'embedded': 0}
             vectors = self.embedding.embed(chunks)
-
+        self._validate_vectors(vectors, len(chunks))
+        metadata['_embedding_identity'] = dict(self.embedding_identity)
         self.store.upsert(memory_id, revision, chunks, vectors, metadata, phash)
         return {'ok': True, 'memory_id': memory_id, 'revision': revision, 'chunks': len(chunks),
                 'reused_embedding': reused, 'embedded': 0 if reused else len(chunks)}
@@ -140,16 +168,40 @@ class RAGAdapter:
         Drops deleted / purged / archived / superseded / forbidden rows, then
         blends relevance with memory weight.
         """
+        self._refresh_identity()
         acl_filter = acl_filter or {}
         requester = acl_filter.get('requester') or acl_filter.get('owner')
         store_filter = dict(acl_filter)
         if 'requester' in store_filter and 'owner' not in store_filter:
             store_filter['owner'] = store_filter['requester']
-        vector = self.embedding.embed([query])[0]
-        raw = self.store.search(vector, limit=max(limit * 3, limit), acl_filter=store_filter)
+        vectors = self.embedding.embed([query])
+        self._validate_vectors(vectors, 1)
+        vector = vectors[0]
+        store_filter['_embedding_identity'] = dict(self.embedding_identity)
+        store_filter['_distinct_memories'] = True
 
+        # Refill after authoritative filtering. The reference store limits
+        # distinct memories, not chunks; legacy stores can still return chunks.
+        # A bounded widening window and no-progress guard support both.
+        window = min(self.search_scan_limit, max(1, limit * 3 if limit else self.search_scan_limit))
+        previous = set()
+        while True:
+            raw = self.store.search(vector, limit=window, acl_filter=store_filter)
+            out = self._search_candidates(raw, requester)
+            if (limit and len(out) >= limit) or len(raw) < window or window >= self.search_scan_limit:
+                break
+            keys = {(c['memory_id'], c['revision'], c.get('chunk_index')) for c in raw}
+            if keys == previous:
+                break
+            previous = keys
+            window = min(self.search_scan_limit, window * 2)
+        return out[:limit] if limit else out
+
+    def _search_candidates(self, raw, requester):
         out = []
         for cand in raw:
+            if (cand.get('metadata') or {}).get('_embedding_identity') != self.embedding_identity:
+                raise ValueError('embedding identity mismatch or legacy index; rebuild the index with the current model')
             row = self._authoritative_row(cand['memory_id'])
             if row is not None:
                 if row.get('deleted_at') is not None or row.get('purged'):
@@ -186,7 +238,10 @@ class RAGAdapter:
             item['relevance'] = relevance
             out.append(item)
         out.sort(key=lambda c: c['score'], reverse=True)
-        return out[:limit] if limit else out
+        distinct = {}
+        for item in out:
+            distinct.setdefault(item['memory_id'], item)
+        return list(distinct.values())
 
     def rerank(self, query, candidates):
         """Rerank candidates.
@@ -241,6 +296,27 @@ class RAGAdapter:
                 'reranker_backend': getattr(self.reranker, 'backend', 'unknown')}
 
     # ---------- helpers ----------
+
+    def _refresh_identity(self):
+        if self._identity_from_client:
+            identity = dict(self.embedding.cache_identity())
+            if (set(identity) != {'provider', 'model', 'version', 'dim'}
+                    or type(identity['dim']) is not int or identity['dim'] <= 0
+                    or any(not isinstance(identity[k], str) or not identity[k]
+                           for k in ('provider', 'model', 'version'))):
+                raise ValueError('invalid embedding cache identity')
+            self.embedding_identity = identity
+
+    def _validate_vectors(self, vectors, expected):
+        if len(vectors) != expected or not vectors:
+            raise ValueError('embedding batch count mismatch')
+        dim = self.embedding_identity['dim']
+        if dim is None:
+            dim = len(vectors[0])
+            self.embedding_identity['dim'] = dim
+        if not dim or any(len(v) != dim or not all(math.isfinite(float(x)) for x in v)
+                          for v in vectors):
+            raise ValueError('embedding identity dimension/values mismatch; rebuild the index')
 
     def _authoritative_row(self, memory_id):
         if self.engine is None:

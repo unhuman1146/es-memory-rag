@@ -249,7 +249,8 @@ class BlockTests(Base):
         self.index(facts=[fact()])
         report = self.ask()
         self.assertNotIn('另有 0 条', report['missing_notice'])
-        self.assertIn('无遗漏', report['missing_notice'])
+        self.assertIn('本轮检索候选', report['missing_notice'])
+        self.assertNotIn('无遗漏', report['missing_notice'])
 
     def test_internal_record_id_never_reaches_the_chat_output(self):
         self.index(mid='mem_internal_id_marker')

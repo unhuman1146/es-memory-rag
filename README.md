@@ -1,12 +1,14 @@
-# ES-Memory RAG 仓管
+# 墨渊·Agent识海集成系统
 
 [中文](README.md) | **[English](README.en.md)**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.4.0-blue)](https://github.com/unhuman1146/es-memory-rag/releases)
-[![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-249%20%E9%A1%B9-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)
+**英文名：ES-Mind。** ES-Mind 是原 ES-Memory RAG 的新品牌，为 Agent 管理长期记忆、情绪关联与上下文工作集；不宣称意识。`es-memory-rag` 仓库、目录、Skill name、导入、CLI 与服务标识保持兼容。
 
-**当前版本：1.4.0 正式版。**
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.4.1-blue)](https://github.com/unhuman1146/es-memory-rag/releases)
+[![测试](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95-286%20%E9%A1%B9-2ea043)](https://github.com/unhuman1146/es-memory-rag/actions)
+
+**当前版本：1.4.1 补丁版。** 升级边界、旧向量索引重建与自然遗忘的抽象情绪余韵，见 [升级说明](references/upgrade-1.4.1.md)。
 
 **主打能力：RAG 长期记忆 + 上下文异构换页。** RAG 根据当前话题筛选、重排并主动注入记忆；上下文工作集将近期对话、状态、摘要、记忆和工具结果分区管理，按需换页，避免把整段历史一直累加到模型请求。
 
@@ -63,7 +65,7 @@ python scripts/memory_engine.py --db demo.db outbox
 python scripts/memory_engine.py presets
 python scripts/memory_engine.py --db demo.db --preset 请你慢一点遗忘我 init
 
-# 测试：共 249 项
+# 测试：共 286 项
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
 python scripts/test_adapter.py
@@ -71,6 +73,7 @@ python scripts/test_chat_path.py
 python scripts/test_slow_forget.py
 python scripts/test_release.py
 python scripts/test_context_pager.py
+python scripts/test_patch_141.py
 ```
 
 需要 Python 3.11+，**零第三方依赖**（仅标准库）。
@@ -108,7 +111,7 @@ es-memory-rag/
 │   ├── demo_live_rag.py    真机验收脚本（需 key，不在 CI）
 │   ├── demo_live_injection.py  主动注入真机验收（需 key，不在 CI）
 │   ├── demo_slow_forget.py 慢遗忘阈值标定与真机验收（需 key，不在 CI）
-│   └── test_*.py           249 项测试
+│   └── test_*.py           286 项测试
 ├── adapters/        参考适配器（embedding / 向量库 / rerank / 契约 / 主动注入 / outbox 消费）
 └── assets/
     ├── config.example.json
@@ -130,10 +133,10 @@ es-memory-rag/
 
 [references/evidence.md](references/evidence.md) 明确区分了两类数字，**不要把默认值当结论引用**：
 
-- **已实测**（某商用长上下文接口，温度 0，合计 34 次调用）：tokenizer 系数 1 token ≈ 1.5 汉字；单针召回 12/12；语义干扰 15/15 严格正确、误取 0；延迟 2.9–21.6s 且不随长度增长
+- **历史报告待核实**：旧文的总计 34 次、语义干扰 15/15 与 3×5×5=75 次设计矛盾；额外无关输出不能算严格正确。原始逐次记录缺失，不能据此保证无长上下文衰减或延迟与长度无关，详见 evidence.md。
 - **未标定的工程默认值**：六档 λ、60/30 压缩边界、20% 日删除概率、情绪参数
 
-本包共有 249 项离线单测。通过离线测试**不证明**宿主已接通真实 RAG、上下文换页或凌晨调度。要看真机跑通的样子，用
+本包共有 286 项离线单测。通过离线测试**不证明**宿主已接通真实 RAG、上下文换页或凌晨调度。要看真机跑通的样子，用
 `python scripts/demo_live_rag.py`（检索层）、`python scripts/demo_live_injection.py`
 （注入层）或 `python scripts/demo_slow_forget.py`（慢遗忘阈值标定），三者都需要 embedding 凭据与网络，不在 CI。
 

@@ -166,7 +166,7 @@ def main():
 
         print('=== 6. the block declares what it left out and hides internal ids')
         check('the block declares its completeness',
-              '未加载' in result['missing_notice'] or '无遗漏' in result['missing_notice'],
+              '未加载' in result['missing_notice'] or '本轮检索候选' in result['missing_notice'],
               repr(result['missing_notice']))
         check('no internal record id in the block',
               all(mid not in result['block'] for mid in [m['id'] for m in MEMORIES]),

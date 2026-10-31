@@ -1,10 +1,12 @@
-# ES-Memory RAG 仓管 (ES-Memory RAG Warehouse)
+# ES-Mind
 
 [中文](README.md) | **English**
 
-**Current version: 1.4.0.**
+**Chinese name: 墨渊·Agent识海集成系统.** ES-Mind is the new brand of ES-Memory RAG. It manages long-term memory, emotional associations, and context working sets for Agents; it makes no claim of consciousness. The `es-memory-rag` repository, directory, Skill name, imports, CLI, and service identifiers remain compatible.
 
-**ES-Memory RAG pairs actively injected long-term RAG memory with a heterogeneous, demand-paged context working set.** Recent turns, state, summaries, retrieved memories, and tool results have separate budgets and paging rules. Its biomimetic memory analogy separates working context, durable facts, and state; its emotion model stores an event snapshot, a decaying current charge, and versioned later appraisals. These are engineering models, not claims of biological equivalence. The host must wire the pager into its request loop; installing this skill does not patch conversation history by itself. See [working-set integration](references/working-set.md).
+**Current version: 1.4.1.** See the [upgrade notes](references/upgrade-1.4.1.md) for embedding identity, index rebuilds, atomic purge, abstract emotional residue after natural forgetting, and owner-authorized explicit erasure.
+
+**ES-Mind pairs actively injected long-term RAG memory with a heterogeneous, demand-paged context working set.** Recent turns, state, summaries, retrieved memories, and tool results have separate budgets and paging rules. Its biomimetic memory analogy separates working context, durable facts, and state; its emotion model stores an event snapshot, a decaying current charge, and versioned later appraisals. These are engineering models, not claims of biological equivalence. The host must wire the pager into its request loop; installing this skill does not patch conversation history by itself. See [working-set integration](references/working-set.md).
 
 Give your Agent's memory a **lifecycle** instead of letting it pile up.
 
@@ -77,7 +79,7 @@ python scripts/memory_engine.py --db demo.db outbox
 python scripts/memory_engine.py presets
 python scripts/memory_engine.py --db demo.db --preset 请你慢一点遗忘我 init
 
-# tests: 249 in total
+# tests: 286 in total
 python scripts/test_memory_engine.py
 python scripts/test_context_budget.py
 python scripts/test_adapter.py
@@ -85,6 +87,7 @@ python scripts/test_chat_path.py
 python scripts/test_slow_forget.py
 python scripts/test_release.py
 python scripts/test_context_pager.py
+python scripts/test_patch_141.py
 ```
 
 Requires Python 3.11+, **standard library only** — no third-party dependencies.
@@ -116,7 +119,7 @@ es-memory-rag/
 │   ├── demo_live_rag.py    live acceptance script (needs a key, not in CI)
 │   ├── demo_live_injection.py  live acceptance of the injection path (needs a key, not in CI)
 │   ├── demo_slow_forget.py threshold calibration for the slow-forget presets (needs a key, not in CI)
-│   └── test_*.py           249 tests
+│   └── test_*.py           286 tests
 ├── adapters/        reference adapter (embedding / vector store / rerank / contract / injection path / outbox)
 └── assets/
     ├── config.example.json
@@ -142,14 +145,11 @@ Full acceptance gates: [GUIDE.md §6](GUIDE.md).
 [references/evidence.md](references/evidence.md) keeps the two apart — **do not
 cite a default as a conclusion**:
 
-- **Measured** (a commercial long-context endpoint, temperature 0, 34 calls in
-  total): tokenizer ratio ≈ 1 token per 1.5 CJK characters; single-needle recall
-  12/12; semantic interference 15/15 strictly correct with 0 false retrievals;
-  latency 2.9–21.6 s with no length trend.
+- **Historical claims awaiting verification**: the reported 34 total calls and 15/15 semantic-interference results conflict with the stated 3 × 5 × 5 = 75 trial design. Extra unrelated output is not a strict pass. Raw trial logs are unavailable; neither no recall decay nor length-independent latency is established. See evidence.md.
 - **Uncalibrated engineering defaults**: the six λ rates, the 60/30 compression
   thresholds, the 20 % daily deletion probability, and every emotion parameter.
 
-The package contains 249 offline unit tests across seven suites. Passing these tests does **not** prove that your host has wired live RAG, context paging, or its 02:00 job. `python scripts/demo_live_rag.py` (retrieval),
+The package contains 286 offline unit tests across eight suites. Passing these tests does **not** prove that your host has wired live RAG, context paging, or its 02:00 job. `python scripts/demo_live_rag.py` (retrieval),
 `python scripts/demo_live_injection.py` (injection) and
 `python scripts/demo_slow_forget.py` (threshold calibration for the slow-forget
 presets) run the real thing — all three need an embedding credential and network

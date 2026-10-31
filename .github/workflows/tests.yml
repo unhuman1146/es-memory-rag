@@ -35,3 +35,6 @@ jobs:
         run: python scripts/test_context_pager.py
       - name: 主动换页离线演示
         run: python scripts/demo_paging.py
+
+      - name: 1.4.1 补丁回归（37 项）
+        run: python scripts/test_patch_141.py

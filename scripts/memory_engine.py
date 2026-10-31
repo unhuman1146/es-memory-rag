@@ -50,6 +50,17 @@ EMOTION_DEFAULTS = {
     'mood_weight': 0.1,
 }
 
+# Deliberately low-information cues, supplied by trusted human intake only.
+# Never hash arbitrary text into an apparently anonymous event fingerprint.
+EMOTION_CUES = frozenset({'rain', 'music', 'departure', 'reunion',
+                          'care', 'conflict', 'achievement', 'loss'})
+
+
+def validate_emotion_cues(cues):
+    if not isinstance(cues, list) or any(not isinstance(c, str) or c not in EMOTION_CUES for c in cues):
+        raise ValueError('emotion cues must be a list of supported abstract scene codes')
+    return sorted(set(cues))
+
 
 def load_config(path=None, preset=None):
     """Load the config, optionally with a named preset overlay applied.
@@ -323,6 +334,10 @@ CREATE TABLE IF NOT EXISTS outbox(
  UNIQUE(memory_id,revision));
 CREATE TABLE IF NOT EXISTS audit(
  id INTEGER PRIMARY KEY AUTOINCREMENT,memory_id TEXT,action TEXT NOT NULL,at REAL NOT NULL,detail TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS emotion_residue(
+ memory_id TEXT NOT NULL,cue TEXT NOT NULL,valence REAL NOT NULL,charge REAL NOT NULL,
+ updated_at REAL NOT NULL,half_life_hours REAL NOT NULL,
+ visibility TEXT NOT NULL,owner TEXT NOT NULL,PRIMARY KEY(memory_id,cue));
 ''')
         with self.db:
             self.db.execute('INSERT OR IGNORE INTO meta VALUES(?,?)', ('lottery_seed', secrets.token_hex(32)))
@@ -332,6 +347,11 @@ CREATE TABLE IF NOT EXISTS audit(
         if 'emotion' not in columns:  # In-place upgrade of pre-emotion reference DBs.
             with self.db:
                 self.db.execute("ALTER TABLE memories ADD COLUMN emotion TEXT NOT NULL DEFAULT ''")
+        for column, ddl in (('deletion_kind', "TEXT NOT NULL DEFAULT 'unknown'"),
+                            ('emotion_cues', "TEXT NOT NULL DEFAULT '[]'")):
+            if column not in columns:
+                with self.db:
+                    self.db.execute(f'ALTER TABLE memories ADD COLUMN {column} {ddl}')
         outbox_columns = [r[1] for r in self.db.execute('PRAGMA table_info(outbox)')]
         for column, ddl in (('attempts', "INTEGER NOT NULL DEFAULT 0"),
                             ('last_error', "TEXT NOT NULL DEFAULT ''"),
@@ -424,6 +444,7 @@ CREATE TABLE IF NOT EXISTS audit(
                     if visibility == 'private' and not owner:
                         raise ValueError('private memory needs a stable owner ID')
                     emotion = new_emotion(action.get('emotion'), event['id'], now)
+                    cues = validate_emotion_cues((action.get('emotion') or {}).get('cues', []))
                     if emotion['snapshot'] and self.cfg['emotion']['enabled']:
                         # Encoding boost must never accidentally grant the W>=90
                         # permanent protection: cap below protected_weight and
@@ -436,6 +457,7 @@ CREATE TABLE IF NOT EXISTS audit(
                         (mid, action.get('body',''), json.dumps(facts,ensure_ascii=False), json.dumps([event['id']]),
                          weight, curve, profile, visibility, owner, now, now, 1, tier_for(weight,self.cfg), '',
                          dump_emotion(emotion)))
+                    self.db.execute('UPDATE memories SET emotion_cues=? WHERE id=?', (json.dumps(cues), mid))
                 elif action['kind'] in ('remind','used'):
                     row = self.row(mid)
                     if not row or row['purged']:
@@ -468,7 +490,7 @@ CREATE TABLE IF NOT EXISTS audit(
                                or row['pinned'] or row['profile'] == 'permanent'
                                else self.cfg['protected_weight'] - 1)
                     self.db.execute('''UPDATE memories SET weight=?,last_decay=?,revision=revision+1,
-                        deleted_at=NULL,source_ids=?,emotion=? WHERE id=?''',
+                        deleted_at=NULL,deletion_kind='unknown',source_ids=?,emotion=? WHERE id=?''',
                         (min(ceiling, decayed(row,now,self.cfg)+boost), settle_at,
                          json.dumps(sources), dump_emotion(emotion), mid))
                 elif action['kind'] == 'appraise':
@@ -594,10 +616,10 @@ CREATE TABLE IF NOT EXISTS audit(
                     self.db.execute('UPDATE memories SET maintenance_day=? WHERE id=?',(plan['day'],row['id']))
                     counts['unchanged']+=1;continue
                 self.db.execute('''UPDATE memories SET weight=?,tier=?,text=?,last_decay=?,maintenance_day=?,
-                    revision=revision+1,deleted_at=? WHERE id=? AND revision=?''',
+                    revision=revision+1,deleted_at=?,deletion_kind=? WHERE id=? AND revision=?''',
                     (action['weight'],action['tier'],'' if action['delete'] else action['text'],
                      max(plan['at'],row['last_decay']),plan['day'],plan['at'] if action['delete'] else None,
-                     row['id'],row['revision']))
+                     'natural' if action['delete'] else row['deletion_kind'],row['id'],row['revision']))
                 emotion = emotion_state(row)
                 if emotion['snapshot']:
                     # L2 fades on the same settlement timestamp as the weight, so
@@ -647,13 +669,102 @@ CREATE TABLE IF NOT EXISTS audit(
         return (1 - mood_weight) * base + mood_weight * max(-1.0, min(1.0, mood_similarity))
 
     def emotion_view(self, mid, now=None):
+        """Trusted source view; tombstones never expose recoverable emotion text."""
         now = time.time() if now is None else now
         row = self.row(mid)
-        if not row:
+        if not row or row['purged'] or row['deleted_at'] is not None:
             return None
         state = emotion_state(row)
         return {'snapshot': state['snapshot'], 'charge': charge_at(row, now, self.cfg),
                 'affect': state['affect'], 'appraisal': state['appraisal'], 'sensitive': state['sensitive']}
+
+    def emotion_resonance(self, cues, requester='', now=None):
+        """Return abstract feelings, never evidence about a forgotten event.
+
+        Hosts supply explicit scene codes; no text inference, model call or RAG
+        injection occurs here. Both saved and current ACL must permit access.
+        """
+        cues = validate_emotion_cues(cues)
+        now = time.time() if now is None else now
+        grouped = {}
+        for row in self.db.execute('''SELECT r.* FROM emotion_residue r JOIN memories m ON m.id=r.memory_id
+                WHERE m.purged=1 AND m.deletion_kind='natural'
+                AND (r.visibility='shared' OR (r.owner=? AND ?!=''))
+                AND (m.visibility='shared' OR (m.owner=? AND ?!=''))''',
+                (requester, requester, requester, requester)):
+            if row['cue'] not in cues:
+                continue
+            charge = row['charge'] * math.exp(-math.log(2) * max(0, now-row['updated_at'])
+                                               / (3600 * row['half_life_hours']))
+            if charge <= 0:
+                continue
+            grouped.setdefault(row['cue'], []).append((row['valence'], charge))
+        feelings = []
+        for cue, values in sorted(grouped.items()):
+            total = sum(q for _, q in values)
+            feelings.append({'cue': cue, 'valence': sum(v*q for v, q in values)/total,
+                             'charge': max(q for _, q in values)})
+        return {'feelings': feelings,
+                'notice': 'Abstract feeling only; it is not evidence of any past event. Do not infer historical facts.'}
+
+    def erase(self, mid, requester, now=None):
+        """Owner-authorized explicit erasure, including this memory's residue.
+
+        The source is logically erased immediately. External index deletion
+        remains pending until its outbox job is actually acknowledged.
+        """
+        now = time.time() if now is None else now
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            row = self.row(mid)
+            if not row or not requester or not row['owner'] or row['owner'] != requester:
+                raise ValueError('explicit erasure requires the verified memory owner')
+            if not (row['purged'] and row['deletion_kind'] == 'explicit'):
+                self.db.execute('DELETE FROM emotion_residue WHERE memory_id=?', (mid,))
+                self._scrub_semantics(mid)
+                self.db.execute("UPDATE memories SET deleted_at=COALESCE(deleted_at,?),deletion_kind='explicit' WHERE id=?",
+                                (now, mid))
+                # Stale upserts may remain durable for supersession accounting,
+                # but no queued payload or error may retain the erased content.
+                for job in self.db.execute('SELECT id,revision FROM outbox WHERE memory_id=?', (mid,)).fetchall():
+                    self.db.execute("UPDATE outbox SET payload=?,last_error='' WHERE id=?",
+                        (json.dumps({'id': mid, 'revision': job['revision']}), job['id']))
+                self._queue(mid)
+                self._audit(mid, 'explicit_erase', now)
+            current = self.row(mid)
+            pending = self.db.execute("SELECT 1 FROM outbox WHERE memory_id=? AND revision=? AND operation='delete' AND ack=0",
+                                      (mid, current['revision'])).fetchone()
+            self.db.commit()
+            return {'status': 'erased', 'revision': current['revision'], 'delete_pending': bool(pending)}
+        except BaseException:
+            self.db.rollback()
+            raise
+
+    def _scrub_semantics(self, mid):
+        self.db.execute("""UPDATE memories SET body='',facts='[]',text='',source_ids='[]',
+            emotion='',emotion_cues='[]',purged=1,revision=revision+1 WHERE id=?""", (mid,))
+        self.db.execute('DELETE FROM outbox WHERE memory_id=? AND ack=1', (mid,))
+        self.db.execute("UPDATE audit SET detail='{}' WHERE memory_id=?", (mid,))
+
+    def _preserve_residue(self, row, now):
+        """Only newly purged, proven natural forgetting can create residue."""
+        if row['purged'] or row['deletion_kind'] != 'natural':
+            return 'unknown_or_already_purged'
+        state = emotion_state(row)
+        snapshot = state['snapshot']
+        cues = validate_emotion_cues(json.loads(row['emotion_cues']))
+        if not snapshot or not cues:
+            return 'no_verified_cue'
+        settle_at = max(now, state['affect']['updated_at'])
+        charge = charge_at(row, settle_at, self.cfg)
+        if charge <= 0:
+            return 'zero_charge'
+        for cue in cues:
+            self.db.execute('''INSERT OR REPLACE INTO emotion_residue
+                (memory_id,cue,valence,charge,updated_at,half_life_hours,visibility,owner)
+                VALUES(?,?,?,?,?,?,?,?)''', (row['id'], cue, snapshot['valence'], charge, settle_at,
+                    charge_half_life_hours(state, self.cfg), row['visibility'], row['owner']))
+        return 'abstract_only'
 
     def outbox(self):
         return [dict(r) for r in self.db.execute('SELECT * FROM outbox WHERE ack=0 AND dead=0 ORDER BY id')]
@@ -700,16 +811,34 @@ CREATE TABLE IF NOT EXISTS audit(
         with self.db:self.db.execute('UPDATE outbox SET ack=1 WHERE id=?',(event_id,))
 
     def purge(self, now=None):
+        """Erase event semantics after acknowledged deletion and recycle TTL.
+
+        Eligibility and erasure share a writer transaction with intake, so a
+        reminder either restores the row first or sees an unavailable tombstone.
+        The existing index deletion is already acknowledged; purging advances
+        the source revision without scheduling another redundant delete.
+        """
         now=time.time() if now is None else now
-        with self.db:
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
             rows=self.db.execute('''SELECT id FROM memories WHERE purged=0 AND deleted_at<=?
                 AND NOT EXISTS(SELECT 1 FROM outbox WHERE memory_id=memories.id AND ack=0)''',
                 (now-self.cfg['recycle_days']*86400,)).fetchall()
+            # Repair semantic remnants left by pre-1.4.1 purges too.
+            legacy=self.db.execute("""SELECT id FROM memories WHERE purged=1 AND
+                (emotion!='' OR emotion_cues!='[]' OR body!='' OR facts!='[]' OR text!='' OR source_ids!='[]'
+                 OR EXISTS(SELECT 1 FROM audit WHERE memory_id=memories.id AND detail!='{}'))""").fetchall()
+            rows=list(rows)+list(legacy)
             for row in rows:
                 mid=row['id']
-                self.db.execute("UPDATE memories SET body='',facts='[]',text='',source_ids='[]',purged=1 WHERE id=?",(mid,))
-                self.db.execute('DELETE FROM outbox WHERE memory_id=? AND ack=1',(mid,))
+                policy = self._preserve_residue(self.row(mid), now)
+                self._scrub_semantics(mid)
+                self._audit(mid, 'residue_policy_' + policy, now)
                 self._audit(mid,'purge',now)
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
         return len(rows)
 
 

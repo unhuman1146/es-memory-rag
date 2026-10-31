@@ -16,6 +16,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from pathlib import Path
 
 DEFAULT_TIMEOUT = 60
@@ -105,6 +106,7 @@ class EmbeddingClient:
     """Common interface: a list of texts in, a list of vectors out."""
 
     backend = 'base'
+    model_version = '1'
 
     def __init__(self, model, dim=1024, timeout=DEFAULT_TIMEOUT):
         self.model = model
@@ -116,6 +118,22 @@ class EmbeddingClient:
 
     def embed_one(self, text):
         return self.embed([text])[0]
+
+    def cache_identity(self):
+        """Non-secret vector-space identity; bump model_version on weight changes.
+
+        Endpoint credentials/query/fragment are excluded. Deployments serving
+        different weights under the same model name must set model_version.
+        """
+        endpoint = urlsplit(getattr(self, 'base_url', ''))
+        provider = self.backend
+        if endpoint.hostname:
+            # Hash endpoint location, never credentials or query parameters.
+            location = '%s://%s:%s%s' % (endpoint.scheme, endpoint.hostname,
+                                       endpoint.port or '', endpoint.path.rstrip('/'))
+            provider += ':' + hashlib.sha256(location.encode()).hexdigest()
+        return {'provider': provider, 'model': self.model,
+                'version': self.model_version, 'dim': self.dim}
 
 
 class SiliconFlowEmbedding(EmbeddingClient):
@@ -236,7 +254,10 @@ def build_embedding(provider=None, model=None, api_key=None, dim=1024, config=No
     model = model or section.get('model')
     dim = int(section.get('dim') or dim)
     if provider == 'siliconflow':
-        return SiliconFlowEmbedding(model=model or 'BAAI/bge-m3', api_key=api_key, dim=dim)
-    if provider == 'ollama':
-        return OllamaEmbedding(model=model or 'bge-m3', dim=dim)
-    raise EmbeddingError('unknown embedding provider: %s' % provider)
+        client = SiliconFlowEmbedding(model=model or 'BAAI/bge-m3', api_key=api_key, dim=dim)
+    elif provider == 'ollama':
+        client = OllamaEmbedding(model=model or 'bge-m3', dim=dim)
+    else:
+        raise EmbeddingError('unknown embedding provider: %s' % provider)
+    client.model_version = str(section.get('version') or '1')
+    return client
